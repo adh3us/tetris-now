@@ -1,0 +1,19 @@
+name: gameros_auth_ui
+description: Paquete compartido de autenticacion UI y Supabase Auth para el ecosistema Gameros.
+version: 0.0.1
+homepage: https://gameros.app
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.10.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.5.0
+  google_sign_in: ^6.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0

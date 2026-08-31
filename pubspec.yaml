@@ -1,11 +1,11 @@
 name: tetris_now
-description: Tetris Now by gameros - Cliente móvil independiente conectado a Supabase.
+description: "Tetris Now by gAmeros - Motor de Tetris competitivo 1v1 y sistema ELO para el ecosistema Gameros."
 publish_to: 'none'
 version: 1.0.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
-  flutter: '>=3.10.0'
+  flutter: ">=3.10.0"
 
 dependencies:
   flutter:
@@ -13,8 +13,12 @@ dependencies:
   supabase_flutter: ^2.5.0
   google_sign_in: ^6.2.1
   app_links: ^6.1.1
+  url_launcher: ^6.3.0
+  shared_preferences: ^2.2.3
+  audioplayers: ^6.0.0
+  vibration: ^2.0.1
   gameros_auth_ui:
-    path: ../gameros_auth_ui
+    path: ./packages/gameros_auth_ui
 
 dev_dependencies:
   flutter_test:
