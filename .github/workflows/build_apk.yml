@@ -1,0 +1,51 @@
+name: Build Tetris Now APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+          cache: true
+
+      - name: Get Dependencies
+        run: |
+          cd gameros_tetris
+          flutter pub get
+
+      - name: Run Tests
+        run: |
+          cd gameros_tetris
+          flutter test test/tetris_engine_test.dart
+
+      - name: Build Debug APK
+        run: |
+          cd gameros_tetris
+          flutter build apk --debug --android-skip-build-dependency-validation
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tetris-Now-APK
+          path: gameros_tetris/build/app/outputs/flutter-apk/app-debug.apk

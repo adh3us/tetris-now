@@ -1,0 +1,993 @@
+import 'dart:async';
+import 'dart:math';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/scheduler.dart';
+import '../core/supabase_config.dart';
+import '../game/tetris_engine.dart';
+import '../game/tetris_types.dart';
+import '../services/audio_service.dart';
+import '../services/tetris_match_service.dart';
+import '../services/tetris_realtime_service.dart';
+import 'virtual_controller.dart';
+
+class TetrisGameScreen extends StatefulWidget {
+  final String? matchId;
+  final String? myTeamId;
+  final String? opponentTeamId;
+  final TetrisRealtimeService? realtimeService;
+  final GameMode mode;
+
+  const TetrisGameScreen({
+    Key? key,
+    this.matchId,
+    this.myTeamId,
+    this.opponentTeamId,
+    this.realtimeService,
+    this.mode = GameMode.solo,
+  }) : super(key: key);
+
+  @override
+  State<TetrisGameScreen> createState() => _TetrisGameScreenState();
+}
+
+class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerProviderStateMixin {
+  late TetrisEngine _engine;
+  late Ticker _ticker;
+  Duration _lastElapsed = Duration.zero;
+  Timer? _shieldTimer;
+  final FocusNode _focusNode = FocusNode();
+  final TetrisMatchService _matchService = TetrisMatchService();
+  final TetrisAudioService _audioService = TetrisAudioService();
+
+  String _combatLog = 'Partida en curso...';
+  bool _isOpponentReconnecting = false;
+  ControllerTheme _controllerTheme = ControllerTheme.moba;
+  double _controllerOpacity = 1.0;
+  bool _isControllerVisible = true;
+
+  double _dragStartX = 0;
+  double _dragStartY = 0;
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.mode == GameMode.coop2v2Wide || widget.mode == GameMode.team2v2Combat) {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    }
+
+    _engine = TetrisEngine(
+      cols: widget.mode == GameMode.coop2v2Wide ? 20 : 10,
+      rows: 20,
+      mode: widget.mode,
+    );
+
+    _ticker = createTicker((elapsed) {
+      if (_lastElapsed == Duration.zero) {
+        _lastElapsed = elapsed;
+        return;
+      }
+      final dt = (elapsed - _lastElapsed).inMicroseconds / 1000000.0;
+      _lastElapsed = elapsed;
+
+      final res = _engine.update(dt);
+      if (res != null) {
+        _processAttackResult(res);
+      }
+      if (_engine.isGameOver) {
+        _handleGameOver();
+      }
+      if (mounted) setState(() {});
+    });
+    _ticker.start();
+
+    _shieldTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_engine.isShieldActive) {
+        setState(() {
+          _engine.updateShieldTimer();
+        });
+      }
+    });
+
+    if (widget.realtimeService != null) {
+      widget.realtimeService!.onIncomingAttack = (lines, tier) {
+        if (!mounted) return;
+        setState(() {
+          if (_engine.isShieldActive) {
+            _combatLog = '¡Ataque de $lines líneas bloqueado por tu Escudo!';
+          } else {
+            _engine.receiveGarbage(lines, tier == CubeType.gold ? CubeType.gold : (tier == CubeType.silver ? CubeType.silver : CubeType.none));
+            _audioService.play(TetrisSfx.damageReceived);
+            _combatLog = 'Recibiste +$lines líneas de basura.';
+          }
+        });
+      };
+
+      widget.realtimeService!.onOpponentConnectionChanged = (isConnected) {
+        if (!mounted) return;
+        setState(() {
+          _isOpponentReconnecting = !isConnected;
+        });
+      };
+
+      widget.realtimeService!.onMatchEnd = (winnerTeamId) {
+        if (!mounted) return;
+        final isVictory = winnerTeamId == widget.myTeamId;
+        _showEndDialog(isVictory ? '¡VICTORIA!' : 'DERROTA');
+      };
+    }
+  }
+
+  void _cycleOpacity() {
+    setState(() {
+      if (_controllerOpacity >= 0.9) {
+        _controllerOpacity = 0.5;
+        _isControllerVisible = true;
+      } else if (_controllerOpacity >= 0.45) {
+        _controllerOpacity = 0.2;
+        _isControllerVisible = true;
+      } else if (_controllerOpacity >= 0.15) {
+        _controllerOpacity = 0.0;
+        _isControllerVisible = false;
+      } else {
+        _controllerOpacity = 1.0;
+        _isControllerVisible = true;
+      }
+    });
+  }
+
+  void _handleAction(GameAction action) {
+    setState(() {
+      switch (action) {
+        case GameAction.moveLeft:
+          _engine.moveLeft();
+          _audioService.play(TetrisSfx.move);
+          break;
+        case GameAction.moveRight:
+          _engine.moveRight();
+          _audioService.play(TetrisSfx.move);
+          break;
+        case GameAction.softDrop:
+          _engine.softDrop();
+          _audioService.play(TetrisSfx.softDrop);
+          if (_engine.isGameOver) _handleGameOver();
+          break;
+        case GameAction.hardDrop:
+          _audioService.play(TetrisSfx.hardDrop);
+          final res = _engine.hardDrop();
+          _processAttackResult(res);
+          if (_engine.isGameOver) _handleGameOver();
+          break;
+        case GameAction.rotateCW:
+          _engine.rotate(1);
+          _audioService.play(TetrisSfx.rotate);
+          break;
+        case GameAction.rotateCCW:
+          _engine.rotate(-1);
+          _audioService.play(TetrisSfx.rotate);
+          break;
+        case GameAction.hold:
+          _engine.hold();
+          _audioService.play(TetrisSfx.hold);
+          break;
+        case GameAction.activateShield:
+          final activated = _engine.activateShield();
+          if (activated) {
+            _audioService.play(TetrisSfx.shieldActivate);
+            _combatLog = '⚡ ¡ESCUDO ACTIVADO! (20s de inmunidad) ⚡';
+          }
+          break;
+        case GameAction.pause:
+          _engine.isPaused = !_engine.isPaused;
+          _showPauseDialog();
+          break;
+        case GameAction.reset:
+          _engine.reset();
+          break;
+      }
+    });
+  }
+
+  void _showPauseDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        title: const Text('PAUSA', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Partida en pausa', style: TextStyle(color: Color(0xFF8B949E))),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                setState(() => _engine.isPaused = false);
+              },
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('CONTINUAR', style: TextStyle(fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF238636)),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _handleAction(GameAction.reset);
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('REINICIAR PARTIDA', style: TextStyle(color: Colors.white)),
+              style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF30363D))),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _processAttackResult(AttackResult res) {
+    if (res.linesCleared == 4) {
+      _audioService.play(TetrisSfx.tetris);
+    } else if (res.linesCleared > 0) {
+      _audioService.play(TetrisSfx.lineClear);
+    }
+
+    if (res.linesSent > 0 && widget.realtimeService != null) {
+      widget.realtimeService!.sendAttack(lines: res.linesSent);
+      _combatLog = 'Enviaste +${res.linesSent} líneas al rival.';
+    }
+    if (res.goldCubeLines > 0 && widget.realtimeService != null) {
+      widget.realtimeService!.sendAttack(lines: 8, tier: CubeType.gold);
+      _combatLog = '¡ATAQUE DE CUBO DORADO (+8 líneas)!';
+    }
+    if (res.silverCubeLines > 0 && widget.realtimeService != null) {
+      widget.realtimeService!.sendAttack(lines: 4, tier: CubeType.silver);
+      _combatLog = '¡ATAQUE DE CUBO PLATEADO (+4 líneas)!';
+    }
+  }
+
+  void _handleGameOver() {
+    _ticker.stop();
+    _audioService.play(TetrisSfx.gameOver);
+
+    if (widget.matchId != null && widget.opponentTeamId != null) {
+      widget.realtimeService?.sendKnockout();
+      widget.realtimeService?.sendMatchEnd(widget.opponentTeamId!);
+
+      _matchService.reportMatchResult(
+        matchId: widget.matchId!,
+        winnerTeamId: widget.opponentTeamId!,
+      );
+      _showEndDialog('DERROTA');
+    } else {
+      _showEndDialog('GAME OVER');
+    }
+  }
+
+  void _showEndDialog(String title) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        title: Text(title, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Text(
+          'Líneas limpiadas: ${_engine.linesCleared}\nLíneas enviadas: ${_engine.linesSent}',
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Color(0xFF8B949E), fontSize: 13),
+        ),
+        actions: [
+          Center(
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                Navigator.of(context).pop();
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5865F2)),
+              child: const Text('VOLVER AL LOBBY', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent) {
+      final key = event.logicalKey;
+
+      if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.keyA) {
+        _handleAction(GameAction.moveLeft);
+        return KeyEventResult.handled;
+      } else if (key == LogicalKeyboardKey.arrowRight || key == LogicalKeyboardKey.keyD) {
+        _handleAction(GameAction.moveRight);
+        return KeyEventResult.handled;
+      } else if (key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.keyS) {
+        _handleAction(GameAction.softDrop);
+        return KeyEventResult.handled;
+      } else if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.keyW) {
+        _handleAction(GameAction.hardDrop);
+        return KeyEventResult.handled;
+      } else if (key == LogicalKeyboardKey.gameButtonA || key == LogicalKeyboardKey.keyZ) {
+        _handleAction(GameAction.rotateCW);
+        return KeyEventResult.handled;
+      } else if (key == LogicalKeyboardKey.gameButtonB || key == LogicalKeyboardKey.keyX) {
+        _handleAction(GameAction.rotateCCW);
+        return KeyEventResult.handled;
+      } else if (key == LogicalKeyboardKey.gameButtonX || key == LogicalKeyboardKey.space) {
+        _handleAction(GameAction.hardDrop);
+        return KeyEventResult.handled;
+      } else if (key == LogicalKeyboardKey.gameButtonY || key == LogicalKeyboardKey.gameButtonLeft2 || key == LogicalKeyboardKey.keyG) {
+        _handleAction(GameAction.activateShield);
+        return KeyEventResult.handled;
+      } else if (key == LogicalKeyboardKey.gameButtonLeft1 || key == LogicalKeyboardKey.keyC || key == LogicalKeyboardKey.shiftLeft) {
+        _handleAction(GameAction.hold);
+        return KeyEventResult.handled;
+      } else if (key == LogicalKeyboardKey.gameButtonRight1 || key == LogicalKeyboardKey.gameButtonRight2) {
+        _handleAction(GameAction.hardDrop);
+        return KeyEventResult.handled;
+      } else if (key == LogicalKeyboardKey.gameButtonSelect) {
+        _handleAction(GameAction.reset);
+        return KeyEventResult.handled;
+      } else if (key == LogicalKeyboardKey.gameButtonStart || key == LogicalKeyboardKey.enter) {
+        _handleAction(GameAction.pause);
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    _shieldTimer?.cancel();
+    _focusNode.dispose();
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return OrientationBuilder(
+      builder: (context, orientation) {
+        final isLandscape = orientation == Orientation.landscape || widget.mode == GameMode.coop2v2Wide;
+        return Focus(
+          focusNode: _focusNode,
+          autofocus: true,
+          onKeyEvent: _handleKeyEvent,
+          child: Scaffold(
+            backgroundColor: const Color(0xFF080A0F),
+            body: SafeArea(
+              child: isLandscape ? _buildLandscapeLayout() : _buildPortraitLayout(),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// DISEÑO HORIZONTAL (CONSOLA PORTÁTIL: SWITCH / STEAM DECK) CON ZOOM MÁXIMO
+  Widget _buildLandscapeLayout() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxH = constraints.maxHeight;
+        final boardH = maxH - 24.0;
+        final boardW = (boardH / 20.0) * _engine.cols;
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // 1. ZONA IZQUIERDA: HOLD + JOYSTICK
+            SizedBox(
+              width: 130,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 6, bottom: 2),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        GestureDetector(
+                          onTap: () => _handleAction(GameAction.hold),
+                          child: _buildCard(
+                            title: 'HOLD (L1)',
+                            child: CustomPaint(
+                              size: const Size(34, 34),
+                              painter: TetrominoPreviewPainter(type: _engine.holdPiece),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            GestureDetector(
+                              onTap: () => _handleAction(GameAction.reset),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF21262D),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text('SELECT', style: TextStyle(color: Color(0xFF8B949E), fontSize: 7.5, fontWeight: FontWeight.bold)),
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            GestureDetector(
+                              onTap: _cycleOpacity,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF238636),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  _isControllerVisible ? 'JOY: ${(_controllerOpacity * 100).toInt()}%' : 'JOY: OFF',
+                                  style: const TextStyle(color: Colors.white, fontSize: 7.5, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    if (_isControllerVisible)
+                      Opacity(
+                        opacity: _controllerOpacity.clamp(0.1, 1.0),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: LandscapeLeftControl(onAction: _handleAction, theme: _controllerTheme),
+                        ),
+                      )
+                    else
+                      const SizedBox(height: 50),
+                  ],
+                ),
+              ),
+            ),
+
+            // 2. ZONA CENTRAL: TABLERO MAXIMIZADO
+            SizedBox(
+              width: boardW + 8,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildShieldBar(isCompact: true),
+                  const SizedBox(height: 2),
+                  _buildInteractiveBoard(boardW, boardH),
+                  const SizedBox(height: 1),
+                  Text(
+                    _combatLog,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Color(0xFF8B949E), fontSize: 7.5, fontFamily: 'monospace'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+
+            // 3. ZONA DERECHA: STATS + BOTONERA
+            SizedBox(
+              width: 130,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 6, bottom: 2),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        GestureDetector(
+                          onTap: () => _handleAction(GameAction.pause),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFD29922),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text('START (PAUSA)', style: TextStyle(color: Colors.black, fontSize: 7.5, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        _buildCard(
+                          title: 'NEXT',
+                          child: Row(
+                            children: _engine.nextQueue.take(2).map((type) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                                child: CustomPaint(
+                                  size: const Size(20, 16),
+                                  painter: TetrominoPreviewPainter(type: type),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_isControllerVisible)
+                      Opacity(
+                        opacity: _controllerOpacity.clamp(0.1, 1.0),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: LandscapeRightControl(onAction: _handleAction, theme: _controllerTheme),
+                        ),
+                      )
+                    else
+                      const SizedBox(height: 50),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// DISEÑO VERTICAL (ESTÁNDAR MÓVIL)
+  Widget _buildPortraitLayout() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableH = constraints.maxHeight - 195.0;
+        final boardH = availableH.clamp(260.0, 440.0);
+        final boardW = (boardH / 20.0) * 10.0;
+
+        return Column(
+          children: [
+            _buildTopHeader(),
+            _buildShieldBar(isCompact: false),
+            Expanded(
+              child: Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Hold & Stats
+                    SizedBox(
+                      width: 56,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          GestureDetector(
+                            onTap: () => _handleAction(GameAction.hold),
+                            child: _buildCard(
+                              title: 'HOLD (L1)',
+                              child: CustomPaint(
+                                size: const Size(38, 38),
+                                painter: TetrominoPreviewPainter(type: _engine.holdPiece),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          _buildCard(title: 'LÍNEAS', value: '${_engine.linesCleared}'),
+                          const SizedBox(height: 6),
+                          _buildCard(title: 'ENVIADAS', value: '${_engine.linesSent}'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+
+                    _buildInteractiveBoard(boardW, boardH),
+                    const SizedBox(width: 6),
+
+                    // Next & Combo
+                    SizedBox(
+                      width: 56,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildCard(
+                            title: 'NEXT',
+                            child: Column(
+                              children: _engine.nextQueue.take(3).map((type) {
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 2.5),
+                                  child: CustomPaint(
+                                    size: const Size(30, 24),
+                                    painter: TetrominoPreviewPainter(type: type),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          _buildCard(title: 'COMBO', value: '${_engine.combo}'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+              child: Text(
+                _combatLog,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Color(0xFF8B949E), fontSize: 9.0, fontFamily: 'monospace'),
+              ),
+            ),
+
+            VirtualControllerWrapper(
+              onAction: _handleAction,
+              initialTheme: _controllerTheme,
+              opacity: _controllerOpacity,
+              isVisible: _isControllerVisible,
+              onToggleTheme: () {
+                setState(() {
+                  _controllerTheme = _controllerTheme == ControllerTheme.dualshock
+                      ? ControllerTheme.moba
+                      : ControllerTheme.dualshock;
+                });
+              },
+              onCycleOpacity: _cycleOpacity,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTopHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 2.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Flexible(
+            child: Text(
+              'TETRIS NOW BY GAMEROS',
+              style: TextStyle(color: Color(0xFF5865F2), fontWeight: FontWeight.w900, fontSize: 11.5, letterSpacing: 0.8),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Row(
+            children: [
+              GestureDetector(
+                onTap: _cycleOpacity,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _isControllerVisible ? const Color(0xFF238636) : const Color(0xFFDA3633),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.gamepad, size: 11, color: Colors.white),
+                      const SizedBox(width: 2),
+                      Text(
+                        _isControllerVisible ? '${(_controllerOpacity * 100).toInt()}%' : 'OFF',
+                        style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF161B22),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: const Color(0xFF30363D)),
+                ),
+                child: const Text('Manba one / PS5', style: TextStyle(color: Colors.white70, fontSize: 8)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShieldBar({required bool isCompact}) {
+    return GestureDetector(
+      onDoubleTap: () => _handleAction(GameAction.activateShield),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: isCompact ? 16.0 : 12.0, vertical: 1.5),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 8, vertical: isCompact ? 2.5 : 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFF161B22),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: _engine.isShieldActive ? const Color(0xFFFFD700) : const Color(0xFF30363D)),
+            boxShadow: _engine.isShieldActive ? [const BoxShadow(color: Color(0x66FFD700), blurRadius: 8)] : null,
+          ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('ESCUDO DE DEFENSA (△ / Doble Tap)', style: TextStyle(color: Color(0xFF8B949E), fontSize: 8, fontWeight: FontWeight.bold)),
+                  Text('${_engine.defenseEnergy} / 5 PTS', style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Row(
+                children: List.generate(5, (index) {
+                  final isFilled = index < _engine.defenseEnergy;
+                  return Expanded(
+                    child: Container(
+                      height: isCompact ? 4.0 : 5.5,
+                      margin: const EdgeInsets.symmetric(horizontal: 1.0),
+                      decoration: BoxDecoration(
+                        color: isFilled ? const Color(0xFF00D26A) : const Color(0xFF21262D),
+                        borderRadius: BorderRadius.circular(2),
+                        boxShadow: isFilled ? [const BoxShadow(color: Color(0x6600D26A), blurRadius: 3)] : null,
+                      ),
+                    ),
+                  );
+                }),
+              ),
+              if (_engine.isShieldActive)
+                Padding(
+                  padding: const EdgeInsets.only(top: 1.5),
+                  child: Text(
+                    '⚡ INMUNIDAD: ${_engine.shieldSecondsRemaining}s ⚡',
+                    style: const TextStyle(color: Color(0xFFFFD700), fontSize: 8, fontWeight: FontWeight.bold),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInteractiveBoard(double width, double height) {
+    return GestureDetector(
+      onTap: () => _handleAction(GameAction.rotateCW),
+      onDoubleTap: () => _handleAction(GameAction.hardDrop),
+      onPanStart: (details) {
+        _dragStartX = details.localPosition.dx;
+        _dragStartY = details.localPosition.dy;
+      },
+      onPanUpdate: (details) {
+        final dx = details.localPosition.dx - _dragStartX;
+        final dy = details.localPosition.dy - _dragStartY;
+
+        if (dx.abs() > 14) {
+          if (dx > 0) {
+            _handleAction(GameAction.moveRight);
+          } else {
+            _handleAction(GameAction.moveLeft);
+          }
+          _dragStartX = details.localPosition.dx;
+        }
+
+        if (dy > 18) {
+          _handleAction(GameAction.softDrop);
+          _dragStartY = details.localPosition.dy;
+        } else if (dy < -26) {
+          _handleAction(GameAction.hardDrop);
+          _dragStartY = details.localPosition.dy;
+        }
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFF30363D), width: 1.8),
+          borderRadius: BorderRadius.circular(6),
+          boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 8)],
+        ),
+        child: CustomPaint(
+          size: Size(width, height),
+          painter: TetrisBoardPainter(engine: _engine),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCard({required String title, String? value, Widget? child}) {
+    return Container(
+      padding: const EdgeInsets.all(3.5),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161B22),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: const Color(0xFF30363D)),
+      ),
+      child: Column(
+        children: [
+          Text(title, style: const TextStyle(color: Color(0xFF8B949E), fontSize: 7.0, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 2),
+          if (value != null)
+            Text(value, style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold))
+          else if (child != null)
+            child,
+        ],
+      ),
+    );
+  }
+}
+
+/// CustomPainter: Estilo 'The New Tetris' (Fichas Lisas Conectadas y Cubos Metálicos Monolíticos Sin Números)
+class TetrisBoardPainter extends CustomPainter {
+  final TetrisEngine engine;
+
+  TetrisBoardPainter({required this.engine});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final blockW = size.width / engine.cols;
+    final blockH = size.height / engine.rows;
+
+    final bgPaint = Paint()..color = const Color(0xFF0D1117);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
+
+    final gridLinePaint = Paint()..color = const Color(0xFF1C2128)..strokeWidth = 0.5;
+    for (int c = 1; c < engine.cols; c++) {
+      canvas.drawLine(Offset(c * blockW, 0), Offset(c * blockW, size.height), gridLinePaint);
+    }
+    for (int r = 1; r < engine.rows; r++) {
+      canvas.drawLine(Offset(0, r * blockH), Offset(size.width, r * blockH), gridLinePaint);
+    }
+
+    // 1. Celdas Bloqueadas
+    for (int y = 0; y < engine.rows; y++) {
+      for (int x = 0; x < engine.cols; x++) {
+        final cell = engine.grid[y][x];
+        if (cell != null) {
+          _drawCell(canvas, x * blockW, y * blockH, blockW, blockH, cell.type, cell.cubeType);
+        }
+      }
+    }
+
+    // 2. Sombra (Ghost Piece)
+    if (engine.currentPiece != null && !engine.isGameOver) {
+      final piece = engine.currentPiece!;
+      final shape = tetrominoShapes[piece.type]![piece.rotation];
+      final ghostPos = engine.getGhostPosition();
+
+      final ghostPaint = Paint()
+        ..color = Colors.white.withOpacity(0.14)
+        ..style = PaintingStyle.fill;
+
+      for (int r = 0; r < shape.length; r++) {
+        for (int c = 0; c < shape[r].length; c++) {
+          if (shape[r][c] != 0) {
+            final gx = (ghostPos.x + c) * blockW;
+            final gy = (ghostPos.y + r) * blockH;
+            canvas.drawRRect(
+              RRect.fromRectAndRadius(Rect.fromLTWH(gx + 0.8, gy + 0.8, blockW - 1.6, blockH - 1.6), const Radius.circular(2)),
+              ghostPaint,
+            );
+          }
+        }
+      }
+
+      // 3. Pieza Activa deslizándose de forma continua y suave
+      final smoothY = engine.getRenderY();
+      for (int r = 0; r < shape.length; r++) {
+        for (int c = 0; c < shape[r].length; c++) {
+          if (shape[r][c] != 0) {
+            final px = (piece.position.x + c) * blockW;
+            final py = (smoothY + r) * blockH;
+            _drawCell(canvas, px, py, blockW, blockH, piece.type, CubeType.none);
+          }
+        }
+      }
+    }
+  }
+
+  void _drawCell(Canvas canvas, double x, double y, double w, double h, TetrominoType type, CubeType cubeType) {
+    final rect = Rect.fromLTWH(x + 0.8, y + 0.8, w - 1.6, h - 1.6);
+
+    // 1. CUBO DORADO (Monocube - Metálico dorado puro y brillante, sin números)
+    if (cubeType == CubeType.gold) {
+      final goldGradient = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFFFFF9C4),
+          Color(0xFFFFD700),
+          Color(0xFFDAA520),
+          Color(0xFFB8860B),
+          Color(0xFFFFE082),
+        ],
+      ).createShader(rect);
+
+      final paint = Paint()..shader = goldGradient;
+      canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(2)), paint);
+
+      final borderPaint = Paint()
+        ..color = const Color(0xFFFFFDF0)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0;
+      canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(2)), borderPaint);
+    }
+    // 2. CUBO PLATEADO (Multicube - Metálico cromado puro y reflectante, sin números)
+    else if (cubeType == CubeType.silver) {
+      final silverGradient = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFFFFFFFF),
+          Color(0xFFECEFF1),
+          Color(0xFFCFD8DC),
+          Color(0xFF78909C),
+          Color(0xFFF5F5F5),
+        ],
+      ).createShader(rect);
+
+      final paint = Paint()..shader = silverGradient;
+      canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(2)), paint);
+
+      final borderPaint = Paint()
+        ..color = const Color(0xFFFFFFFF)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0;
+      canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(2)), borderPaint);
+    }
+    // 3. FICHAS NORMALES (Color propio sólido, liso y vibrante estilo The New Tetris)
+    else {
+      final baseColor = tetrominoColors[type] ?? Colors.grey;
+
+      final cellGradient = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          baseColor,
+          baseColor.withOpacity(0.85),
+        ],
+      ).createShader(rect);
+
+      final paint = Paint()..shader = cellGradient;
+      canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(2)), paint);
+
+      final borderPaint = Paint()
+        ..color = Colors.white.withOpacity(0.25)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.6;
+      canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(2)), borderPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+class TetrominoPreviewPainter extends CustomPainter {
+  final TetrominoType? type;
+
+  TetrominoPreviewPainter({this.type});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (type == null) return;
+    final shape = tetrominoShapes[type]![0];
+    const cellSize = 6.5;
+
+    final paint = Paint()..color = tetrominoColors[type] ?? Colors.white;
+    final offsetX = (size.width - shape[0].length * cellSize) / 2;
+    final offsetY = (size.height - shape.length * cellSize) / 2;
+
+    for (int r = 0; r < shape.length; r++) {
+      for (int c = 0; c < shape[r].length; c++) {
+        if (shape[r][c] != 0) {
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromLTWH(offsetX + c * cellSize, offsetY + r * cellSize, cellSize - 1, cellSize - 1),
+              const Radius.circular(1.2),
+            ),
+            paint,
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
