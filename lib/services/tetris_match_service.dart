@@ -6,7 +6,6 @@ class TetrisMatchModel {
   final String id;
   final String roomCode;
   final String roomName;
-  final String? password;
   final bool isPrivate;
   final bool allowSpectators;
   final String? tournamentId;
@@ -26,7 +25,6 @@ class TetrisMatchModel {
     required this.id,
     this.roomCode = '90960',
     this.roomName = 'Duelo 1c1',
-    this.password,
     this.isPrivate = false,
     this.allowSpectators = true,
     this.tournamentId,
@@ -48,8 +46,7 @@ class TetrisMatchModel {
       id: map['id'] as String,
       roomCode: map['room_code'] as String? ?? '90960',
       roomName: map['room_name'] as String? ?? 'Duelo 1c1 Gameros',
-      password: map['password'] as String?,
-      isPrivate: (map['password'] != null && (map['password'] as String).isNotEmpty) || (map['is_private'] as bool? ?? false),
+      isPrivate: map['is_private'] as bool? ?? false,
       allowSpectators: map['allow_spectators'] as bool? ?? true,
       tournamentId: map['tournament_id'] as String?,
       roundNumber: map['round_number'] as int? ?? 1,
@@ -105,10 +102,23 @@ class TetrisPlayerModel {
 class TetrisMatchService {
   SupabaseClient get supabase => SupabaseConfig.client;
 
+  /// Genera un UUID v4 sin depender de un paquete extra (ya que
+  /// `team_1_id`/`team_2_id`/`team_id` son columnas UUID en la base:
+  /// pasar strings como "team_alpha_<id>" rompe el insert).
+  String _uuidV4() {
+    final rnd = Random.secure();
+    final bytes = List<int>.generate(16, (_) => rnd.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    String hex(int start, int end) =>
+        bytes.sublist(start, end).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex(0, 4)}-${hex(4, 6)}-${hex(6, 8)}-${hex(8, 10)}-${hex(10, 16)}';
+  }
+
   Future<TetrisMatchModel> createMatch({
     required String format,
-    required String team1Id,
-    required String team2Id,
+    String? team1Id,
+    String? team2Id,
     String roomName = 'Duelo 1c1',
     String? password,
     bool allowSpectators = true,
@@ -124,11 +134,10 @@ class TetrisMatchService {
         .insert({
           'room_code': code,
           'room_name': roomName,
-          'password': isPriv ? password.trim() : null,
           'allow_spectators': allowSpectators,
           'format': format,
-          'team_1_id': team1Id,
-          'team_2_id': team2Id,
+          'team_1_id': team1Id ?? _uuidV4(),
+          'team_2_id': team2Id ?? _uuidV4(),
           'tournament_id': tournamentId,
           'round_number': roundNumber,
           'status': 'pending',
@@ -136,7 +145,18 @@ class TetrisMatchService {
         .select()
         .single();
 
-    return TetrisMatchModel.fromMap(response);
+    final match = TetrisMatchModel.fromMap(response);
+
+    // La contraseña nunca viaja en texto plano a la tabla: se hashea
+    // server-side vía tetris.crear_sala_privada (bcrypt/pgcrypto).
+    if (isPriv) {
+      await supabase.schema('tetris').rpc('crear_sala_privada', params: {
+        'p_match_id': match.id,
+        'p_password': password.trim(),
+      });
+    }
+
+    return match;
   }
 
   Future<void> joinMatch({
@@ -144,7 +164,10 @@ class TetrisMatchService {
     required String teamId,
     required String gamerTag,
   }) async {
-    final userId = supabase.auth.currentUser?.id ?? 'guest_user';
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Necesitás iniciar sesión con tu cuenta de Gameros para unirte a una sala.');
+    }
     await supabase.schema('tetris').from('match_tetris_players').upsert({
       'match_id': matchId,
       'team_id': teamId,
@@ -178,8 +201,18 @@ class TetrisMatchService {
     }
 
     final match = TetrisMatchModel.fromMap(res);
-    if (match.isPrivate && match.password != null && match.password!.isNotEmpty) {
-      if (password == null || password.trim() != match.password) {
+    if (match.isPrivate) {
+      // La verificación real la hace tetris.verificar_password_sala
+      // (compara el hash server-side); acá solo se corta temprano si
+      // ni siquiera mandaron contraseña.
+      if (password == null || password.trim().isEmpty) {
+        throw Exception('Esta sala requiere contraseña.');
+      }
+      final ok = await supabase.schema('tetris').rpc('verificar_password_sala', params: {
+        'p_match_id': match.id,
+        'p_password': password.trim(),
+      }) as bool;
+      if (!ok) {
         throw Exception('Contraseña de sala incorrecta.');
       }
     }
@@ -198,29 +231,7 @@ class TetrisMatchService {
 
       return (res as List).map((e) => TetrisMatchModel.fromMap(e)).toList();
     } catch (_) {
-      return [
-        TetrisMatchModel(
-          id: 'demo_1',
-          roomCode: '90960',
-          roomName: 'Duelo de Lucas (Gameros)',
-          format: '1v1',
-          status: 'pending',
-          team1Id: 't1',
-          team2Id: 't2',
-          isPrivate: false,
-        ),
-        TetrisMatchModel(
-          id: 'demo_2',
-          roomCode: '45812',
-          roomName: 'Torneo Privado Alpha',
-          password: '123',
-          format: '1v1',
-          status: 'pending',
-          team1Id: 't1',
-          team2Id: 't2',
-          isPrivate: true,
-        ),
-      ];
+      return [];
     }
   }
 
@@ -254,5 +265,39 @@ class TetrisMatchService {
     });
 
     return Map<String, dynamic>.from(res as Map);
+  }
+
+  /// Botón único "Jugar": entra a la cola de matchmaking automático y,
+  /// si ya había un rival esperando, devuelve el match_id recién creado.
+  /// Si devuelve null, hay que seguir esperando (ver [miEstadoMatchmaking]).
+  Future<String?> buscarPartidaAutomatica(String gamerTag) async {
+    final res = await supabase.schema('tetris').rpc('buscar_partida_automatica', params: {
+      'p_gamer_tag': gamerTag,
+    });
+    return res as String?;
+  }
+
+  /// Polling mientras se espera en cola: si otro jugador ya nos
+  /// emparejó, devuelve el match_id de la partida recién creada.
+  Future<String?> miEstadoMatchmaking() async {
+    final res = await supabase.schema('tetris').rpc('mi_estado_matchmaking');
+    return res as String?;
+  }
+
+  Future<void> cancelarBusqueda() async {
+    await supabase.schema('tetris').rpc('cancelar_busqueda');
+  }
+
+  /// La llama el jugador que sigue conectado cuando el rival no volvió
+  /// a aparecer tras el timeout de reconexión (30s, ver
+  /// TetrisRealtimeService). Penaliza el ELO del que abandonó.
+  Future<void> penalizarAbandono({
+    required String matchId,
+    required String userIdAbandono,
+  }) async {
+    await supabase.schema('tetris').rpc('penalizar_abandono', params: {
+      'p_match_id': matchId,
+      'p_user_id': userIdAbandono,
+    });
   }
 }

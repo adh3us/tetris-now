@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import '../services/tetris_match_service.dart';
 import '../services/gameros_profile_service.dart';
@@ -156,18 +155,26 @@ class _CreateDuelScreenState extends State<CreateDuelScreen> {
   Future<void> _createAndEnterRoom() async {
     setState(() => _isLoading = true);
     final user = _matchService.supabase.auth.currentUser;
-    final userId = user?.id ?? 'guest_${Random().nextInt(99999)}';
-    final team1 = 'team_alpha_$userId';
-    final team2 = 'team_beta_${DateTime.now().millisecondsSinceEpoch}';
+    if (user == null) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Necesitás iniciar sesión con tu cuenta de Gameros para crear una sala.'),
+          backgroundColor: Color(0xFFDA3633),
+        ));
+      }
+      return;
+    }
 
     try {
       final p = await _profileService.getFullProfile();
       final tag = p?.displayName ?? 'Rey-ToRuS';
 
+      // team1Id/team2Id quedan null: createMatch genera UUIDs válidos
+      // (las columnas team_1_id/team_2_id son UUID en la base; pasar
+      // strings como "team_alpha_<id>" rompía el insert).
       final match = await _matchService.createMatch(
         format: '1v1',
-        team1Id: team1,
-        team2Id: team2,
         roomName: _roomNameController.text.trim(),
         password: _isPasswordProtected ? _passwordController.text.trim() : null,
         allowSpectators: _allowSpectators,
@@ -175,14 +182,19 @@ class _CreateDuelScreenState extends State<CreateDuelScreen> {
 
       await _matchService.joinMatch(
         matchId: match.id,
-        teamId: team1,
+        teamId: match.team1Id,
         gamerTag: tag,
       );
 
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (_) => MatchLobbyScreen(initialMatchId: match.id),
+            builder: (_) => MatchLobbyScreen(
+              initialMatchId: match.id,
+              isHost: true,
+              hostTeamId: match.team1Id,
+              hostOpponentTeamId: match.team2Id,
+            ),
           ),
         );
       }

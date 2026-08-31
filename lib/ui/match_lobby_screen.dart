@@ -11,7 +11,21 @@ import 'tetris_game_screen.dart';
 class MatchLobbyScreen extends StatefulWidget {
   final String? initialMatchId;
 
-  const MatchLobbyScreen({Key? key, this.initialMatchId}) : super(key: key);
+  /// true cuando quien entra a esta pantalla es quien CREÓ la sala
+  /// (viene de CreateDuelScreen, ya está unido con [hostTeamId]). En
+  /// ese caso no hay que volver a llamar joinMatch, y es quien dispara
+  /// el auto-lanzamiento apenas se conecta el invitado.
+  final bool isHost;
+  final String? hostTeamId;
+  final String? hostOpponentTeamId;
+
+  const MatchLobbyScreen({
+    Key? key,
+    this.initialMatchId,
+    this.isHost = false,
+    this.hostTeamId,
+    this.hostOpponentTeamId,
+  }) : super(key: key);
 
   @override
   State<MatchLobbyScreen> createState() => _MatchLobbyScreenState();
@@ -30,8 +44,8 @@ class _MatchLobbyScreenState extends State<MatchLobbyScreen> {
   String _myTeamId = '';
   String _opponentTeamId = '';
   bool _isLoading = false;
-  bool _isReady = false;
-  bool _opponentReady = false;
+  bool _opponentConnected = false;
+  bool _starting = false;
   List<TetrisPlayerModel> _players = [];
   TetrisRealtimeService? _realtimeService;
 
@@ -47,8 +61,12 @@ class _MatchLobbyScreenState extends State<MatchLobbyScreen> {
 
     _loadRealGamerTag();
 
-    if (widget.initialMatchId != null) {
-      _matchId = widget.initialMatchId;
+    if (widget.initialMatchId == null) return;
+    _matchId = widget.initialMatchId;
+
+    if (widget.isHost && widget.hostTeamId != null && widget.hostOpponentTeamId != null) {
+      _initAsHost(_matchId!);
+    } else {
       _joinExistingMatch(_matchId!);
     }
   }
@@ -62,6 +80,32 @@ class _MatchLobbyScreenState extends State<MatchLobbyScreen> {
         });
       }
     } catch (_) {}
+  }
+
+  /// El creador de la sala ya está unido (CreateDuelScreen ya llamó
+  /// joinMatch) — acá solo carga los datos de la sala y arma el
+  /// realtime, sin volver a unirse (eso pisaba su propio team_id).
+  Future<void> _initAsHost(String matchId) async {
+    setState(() => _isLoading = true);
+    try {
+      final match = await _matchService.getMatch(matchId);
+      setState(() {
+        _roomCode = match.roomCode;
+        _roomName = match.roomName;
+        _myTeamId = widget.hostTeamId!;
+        _opponentTeamId = widget.hostOpponentTeamId!;
+      });
+      _initRealtime(matchId, _myTeamId, _opponentTeamId);
+      _fetchPlayers();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Error al cargar la sala: $e'),
+        backgroundColor: const Color(0xFFDA3633),
+      ));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _joinExistingMatch(String matchIdOrCode) async {
@@ -87,6 +131,7 @@ class _MatchLobbyScreenState extends State<MatchLobbyScreen> {
       _initRealtime(match.id, myTeam, match.team1Id);
       _fetchPlayers();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Error al unirse: $e'),
         backgroundColor: const Color(0xFFDA3633),
@@ -103,13 +148,20 @@ class _MatchLobbyScreenState extends State<MatchLobbyScreen> {
         myTeamId: myTeam,
         opponentTeamId: opponentTeam,
         currentUserId: _currentUserId,
-        onPlayerReady: (userId, teamId) {
-          if (userId != _currentUserId && mounted) {
-            setState(() => _opponentReady = true);
-          }
-        },
         onMatchStart: () {
           _navigateToGame();
+        },
+        onOpponentConnectionChanged: (isConnected) {
+          if (!mounted) return;
+          setState(() => _opponentConnected = isConnected);
+          // Decisión de producto (30/08/2026): mientras no esté el
+          // sistema de doble "Listo" de Gameros integrado, la sala
+          // lanza la partida automáticamente apenas se conecta el
+          // jugador invitado — solo el host la dispara, para no
+          // arrancarla dos veces.
+          if (isConnected && widget.isHost) {
+            _autoStartAsHost();
+          }
         },
       );
       _realtimeService?.connect();
@@ -124,19 +176,14 @@ class _MatchLobbyScreenState extends State<MatchLobbyScreen> {
     } catch (_) {}
   }
 
-  void _toggleReady() async {
-    setState(() => _isReady = !_isReady);
+  Future<void> _autoStartAsHost() async {
+    if (_starting || _matchId == null) return;
+    _starting = true;
     try {
-      await _realtimeService?.sendReady();
+      await _matchService.startMatch(_matchId!);
+      await _realtimeService?.sendMatchStart();
     } catch (_) {}
-
-    if (_isReady) {
-      try {
-        await _matchService.startMatch(_matchId!);
-        await _realtimeService?.sendMatchStart();
-      } catch (_) {}
-      _navigateToGame();
-    }
+    _navigateToGame();
   }
 
   void _navigateToGame() {
@@ -321,6 +368,7 @@ class _MatchLobbyScreenState extends State<MatchLobbyScreen> {
                       itemBuilder: (context, index) {
                         final p = _players[index];
                         final isMe = p.userId == _currentUserId;
+                        final conectado = isMe || _opponentConnected;
                         return Container(
                           margin: const EdgeInsets.only(bottom: 10),
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -345,11 +393,11 @@ class _MatchLobbyScreenState extends State<MatchLobbyScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: (isMe ? _isReady : _opponentReady) ? const Color(0xFF238636) : const Color(0xFFDA3633),
+                                  color: conectado ? const Color(0xFF238636) : const Color(0xFFDA3633),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
-                                  (isMe ? _isReady : _opponentReady) ? 'LISTO' : 'ESPERANDO',
+                                  conectado ? 'CONECTADO' : 'ESPERANDO',
                                   style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold),
                                 ),
                               ),
@@ -360,16 +408,33 @@ class _MatchLobbyScreenState extends State<MatchLobbyScreen> {
                     ),
                   ),
 
-                  ElevatedButton(
-                    onPressed: _toggleReady,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _isReady ? const Color(0xFFDA3633) : const Color(0xFF238636),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  // Sin botón "Listo": la partida arranca sola apenas
+                  // se conecta el rival (decisión 30/08/2026, pendiente
+                  // el doble-Listo cuando Gameros lo tenga integrado).
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF161B22),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF30363D)),
                     ),
-                    child: Text(
-                      _isReady ? 'INICIANDO DUELO 1c1...' : '¡ESTOY LISTO / JUGAR!',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: _opponentConnected ? const Color(0xFF238636) : const Color(0xFF5865F2),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          _opponentConnected ? 'RIVAL CONECTADO — INICIANDO...' : 'ESPERANDO AL RIVAL...',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 0.6),
+                        ),
+                      ],
                     ),
                   ),
                 ],

@@ -117,9 +117,52 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       widget.realtimeService!.onMatchEnd = (winnerTeamId) {
         if (!mounted) return;
         final isVictory = winnerTeamId == widget.myTeamId;
+        // El perdedor ya reportó desde _handleGameOver; acá reporta el
+        // ganador para que reportar_resultado_partida_externa junte los
+        // 2 reportes que necesita para cerrar la partida y aplicar ELO
+        // (antes solo reportaba el perdedor y nunca se juntaban los 2).
+        if (isVictory && widget.matchId != null) {
+          _matchService.reportMatchResult(
+            matchId: widget.matchId!,
+            winnerTeamId: winnerTeamId,
+          );
+        }
         _showEndDialog(isVictory ? '¡VICTORIA!' : 'DERROTA');
       };
+
+      widget.realtimeService!.onOpponentTimeout = () {
+        if (!mounted) return;
+        _handleOpponentAbandono();
+      };
     }
+  }
+
+  /// El rival no volvió a conectarse tras 30s (timeout de reconexión):
+  /// se le da la victoria por WO a quien sigue conectado y se penaliza
+  /// el ELO de quien abandonó (15% del ELO actual, sin piso en 0).
+  Future<void> _handleOpponentAbandono() async {
+    if (widget.matchId == null || widget.myTeamId == null) {
+      _showEndDialog('RIVAL DESCONECTADO');
+      return;
+    }
+    try {
+      await _matchService.reportMatchResult(
+        matchId: widget.matchId!,
+        winnerTeamId: widget.myTeamId!,
+      );
+    } catch (_) {}
+
+    final oponenteUserId = widget.realtimeService?.opponentUserId;
+    if (oponenteUserId != null) {
+      try {
+        await _matchService.penalizarAbandono(
+          matchId: widget.matchId!,
+          userIdAbandono: oponenteUserId,
+        );
+      } catch (_) {}
+    }
+
+    if (mounted) _showEndDialog('¡VICTORIA POR ABANDONO DEL RIVAL!');
   }
 
   void _cycleOpacity() {

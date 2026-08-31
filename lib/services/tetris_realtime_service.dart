@@ -17,6 +17,18 @@ class TetrisRealtimeService {
   Function(String winnerTeamId)? onMatchEnd;
   Function(bool isOpponentConnected)? onOpponentConnectionChanged;
 
+  /// Se dispara si el rival no vuelve a conectarse dentro de los 30s
+  /// del timeout de reconexión (abandono/desconexión) — distinto de
+  /// [onMatchEnd], que es el cierre normal por partida jugada. Quien
+  /// sigue conectado es quien reporta el resultado y dispara la
+  /// penalización de ELO de quien abandonó (usa [opponentUserId]).
+  Function()? onOpponentTimeout;
+
+  /// user_id real del rival, capturado por presence apenas se conecta
+  /// a la sala (necesario para tetris.penalizar_abandono, que trabaja
+  /// con user_id, no con team_id).
+  String? opponentUserId;
+
   Timer? _reconnectTimer;
   int reconnectSecondsRemaining = 30;
 
@@ -31,6 +43,7 @@ class TetrisRealtimeService {
     this.onPlayerKnockout,
     this.onMatchEnd,
     this.onOpponentConnectionChanged,
+    this.onOpponentTimeout,
   });
 
   void connect() {
@@ -48,6 +61,7 @@ class TetrisRealtimeService {
               for (final dynamic p in payloads) {
                 if (p is Map && p['user_id'] != currentUserId) {
                   opponentFound = true;
+                  opponentUserId = p['user_id'] as String?;
                   break;
                 }
               }
@@ -69,6 +83,7 @@ class TetrisRealtimeService {
           if (payloads is Iterable && payloads.isNotEmpty) {
             final dynamic p = payloads.first;
             if (p is Map && p['user_id'] != currentUserId) {
+              opponentUserId = p['user_id'] as String?;
               _cancelReconnectTimer();
               onOpponentConnectionChanged?.call(true);
             }
@@ -170,7 +185,7 @@ class TetrisRealtimeService {
       reconnectSecondsRemaining--;
       if (reconnectSecondsRemaining <= 0) {
         timer.cancel();
-        onMatchEnd?.call(myTeamId);
+        onOpponentTimeout?.call();
       }
     });
   }

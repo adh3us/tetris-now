@@ -2,16 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:gameros_auth_ui/gameros_auth_ui.dart';
 import 'core/supabase_config.dart';
-import 'game/tetris_types.dart';
 import 'services/deep_link_service.dart';
 import 'services/gameros_profile_service.dart';
-import 'ui/create_duel_screen.dart';
-import 'ui/browse_rooms_screen.dart';
 import 'ui/match_lobby_screen.dart';
-import 'ui/tournament_brackets_screen.dart';
-import 'ui/clan_challenges_screen.dart';
 import 'ui/friends_screen.dart';
-import 'ui/tetris_game_screen.dart';
+import 'ui/quick_play_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -279,158 +274,30 @@ class _TetrisHomeScreenState extends State<TetrisHomeScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 28),
 
-                // 1. Practica Individual (The New Tetris Style)
-                _buildMenuButton(
-                  context: context,
-                  title: 'PRÁCTICA INDIVIDUAL (10x20)',
-                  subtitle: 'Monocubos Oro, Multicubos Plata, 60 FPS y Escudo 20s',
-                  icon: Icons.play_arrow_rounded,
-                  color: const Color(0xFF5865F2),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const TetrisGameScreen(mode: GameMode.solo)),
-                    );
-                  },
-                ),
-                const SizedBox(height: 10),
-
-                // 2. Crear Duelos (1c1 y 2c2 Próximamente)
-                _buildMenuButton(
-                  context: context,
-                  title: 'CREAR DUELOS',
-                  subtitle: 'Duelo 1c1 (nombre, contraseña, árbitro) • 2c2 Próximamente',
-                  icon: Icons.add_box_rounded,
-                  color: const Color(0xFF059669),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const CreateDuelScreen()),
-                    );
-                  },
-                ),
-                const SizedBox(height: 10),
-
-                // 3. Encontrar Salas (Lobby)
-                _buildMenuButton(
-                  context: context,
-                  title: 'ENCONTRAR SALAS (LOBBY)',
-                  subtitle: 'Explorar salas públicas y privadas creadas por usuarios',
-                  icon: Icons.travel_explore_rounded,
-                  color: const Color(0xFF0284C7),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const BrowseRoomsScreen()),
-                    );
-                  },
-                ),
-                const SizedBox(height: 10),
-
-                // 4. Sistema de Amigos y Social de Gameros
-                _buildMenuButton(
-                  context: context,
-                  title: 'AMIGOS Y SOCIAL (GAMEROS)',
-                  subtitle: 'Estados en vivo por juego, buzón de mensajes e invitar a duelo',
-                  icon: Icons.people_alt_rounded,
-                  color: const Color(0xFF7C3AED),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const FriendsScreen()),
-                    );
-                  },
-                ),
-                const SizedBox(height: 10),
-
-                // 5. Desafíos de Clanes (Gameros)
-                _buildMenuButton(
-                  context: context,
-                  title: 'DESAFÍOS DE CLANES (GAMEROS)',
-                  subtitle: 'Guerras de clanes 1c1 y retos de equipo',
-                  icon: Icons.shield_rounded,
-                  color: const Color(0xFF4F46E5),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const ClanChallengesScreen()),
-                    );
-                  },
-                ),
-                const SizedBox(height: 10),
-
-                // 6. Torneos y Brackets
-                _buildMenuButton(
-                  context: context,
-                  title: 'TORNEOS Y BRACKETS',
-                  subtitle: 'Árbol de rondas y llaves sincronizadas Gameros',
-                  icon: Icons.account_tree_rounded,
-                  color: const Color(0xFF161B22),
-                  borderColor: const Color(0xFF30363D),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const TournamentBracketsScreen(tournamentId: 'demo_tournament')),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMenuButton({
-    required BuildContext context,
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-    Color textColor = Colors.white,
-    Color? borderColor,
-    required VoidCallback onTap,
-  }) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(12),
-        border: borderColor != null ? Border.all(color: borderColor) : null,
-        boxShadow: [
-          BoxShadow(color: color.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 3)),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 13.0),
-            child: Row(
-              children: [
-                Icon(icon, color: textColor, size: 24),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          color: textColor,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 12,
-                          letterSpacing: 0.6,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: TextStyle(color: textColor.withOpacity(0.8), fontSize: 9.5),
-                      ),
-                    ],
+                // Modos ocultos/desactivados (30/08/2026): Práctica Individual,
+                // Crear Duelos, Encontrar Salas, Amigos y Social, Desafíos de
+                // Clanes y Torneos y Brackets ya no se muestran acá. Todo el
+                // flujo 1v1 (matchmaking automático y sala por invitación)
+                // pasa ahora por QuickPlayScreen detrás de este único botón.
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const QuickPlayScreen()),
+                      );
+                    },
+                    icon: const Icon(Icons.play_arrow_rounded, size: 28),
+                    label: const Text('JUGAR', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: 1.2)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF238636),
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
                   ),
                 ),
-                Icon(Icons.arrow_forward_ios_rounded, color: textColor.withOpacity(0.5), size: 14),
               ],
             ),
           ),
