@@ -28,6 +28,9 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Install CMake 3.22.1 (requerido por jni/jni_flutter, dependencia nativa de google_sign_in)
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "cmake;3.22.1"
+
       - name: Get Dependencies
         run: flutter pub get
 
