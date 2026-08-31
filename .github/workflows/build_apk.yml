@@ -30,22 +30,16 @@ jobs:
           cache: true
 
       - name: Get Dependencies
-        run: |
-          cd gameros_tetris
-          flutter pub get
+        run: flutter pub get
 
       - name: Run Tests
-        run: |
-          cd gameros_tetris
-          flutter test test/tetris_engine_test.dart
+        run: flutter test test/tetris_engine_test.dart
 
       - name: Build Debug APK
-        run: |
-          cd gameros_tetris
-          flutter build apk --debug --android-skip-build-dependency-validation
+        run: flutter build apk --debug --android-skip-build-dependency-validation
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Tetris-Now-APK
-          path: gameros_tetris/build/app/outputs/flutter-apk/app-debug.apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
