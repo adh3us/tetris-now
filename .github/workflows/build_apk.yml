@@ -11,6 +11,8 @@ jobs:
   build:
     name: Build Android APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Repository
@@ -45,3 +47,19 @@ jobs:
         with:
           name: Tetris-Now-APK
           path: build/app/outputs/flutter-apk/app-debug.apk
+
+      # Publica el APK como GitHub Release en vez de solo Artifact:
+      # el link de descarga queda directo (sin login ni zip), y es
+      # estable — cada push a main que compila bien pisa la misma
+      # Release "latest-apk" con el APK mas nuevo.
+      - name: Publish APK as GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-apk
+          name: "Tetris Now - último build (${{ github.sha }})"
+          prerelease: true
+          body: |
+            APK de debug compilado automáticamente desde `main` (commit ${{ github.sha }}).
+            Este release se sobreescribe en cada build verde — siempre apunta al último código.
+          files: build/app/outputs/flutter-apk/app-debug.apk
