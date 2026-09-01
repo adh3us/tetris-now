@@ -1,0 +1,55 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Get Dependencies
+        run: |
+          if [ -f "pubspec.yaml" ]; then
+            flutter pub get
+          elif [ -f "gameros_tetris/pubspec.yaml" ]; then
+            cd gameros_tetris
+            flutter pub get
+          fi
+
+      - name: Build Debug APK
+        run: |
+          if [ -f "pubspec.yaml" ]; then
+            flutter build apk --debug --android-skip-build-dependency-validation
+          elif [ -f "gameros_tetris/pubspec.yaml" ]; then
+            cd gameros_tetris
+            flutter build apk --debug --android-skip-build-dependency-validation
+          fi
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tetris-now-apk
+          path: |
+            build/app/outputs/flutter-apk/*.apk
+            gameros_tetris/build/app/outputs/flutter-apk/*.apk
