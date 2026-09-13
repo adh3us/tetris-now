@@ -7,8 +7,6 @@ class FriendModel {
   final String gamerTag;
   final String? username;
   final String? avatarUrl;
-  final String status; // 'en_linea', 'en_partida', 'desconectado'
-  final String currentGame; // 'Tetris Now', 'TrucoArg', 'Chess in Time', 'En el Hub de Gameros', 'Desconectado'
   final int tetrisElo;
 
   FriendModel({
@@ -17,8 +15,6 @@ class FriendModel {
     required this.gamerTag,
     this.username,
     this.avatarUrl,
-    this.status = 'en_linea',
-    this.currentGame = 'Tetris Now',
     this.tetrisElo = 1000,
   });
 }
@@ -39,24 +35,13 @@ class FriendRequestModel {
   });
 }
 
-class FriendMessageModel {
+class UserSearchResult {
   final String id;
-  final String senderId;
-  final String senderGamerTag;
-  final String receiverId;
-  final String message;
-  final DateTime createdAt;
-  final bool isRead;
+  final String displayName;
+  final String? username;
+  final String? avatarUrl;
 
-  FriendMessageModel({
-    required this.id,
-    required this.senderId,
-    required this.senderGamerTag,
-    required this.receiverId,
-    required this.message,
-    required this.createdAt,
-    this.isRead = false,
-  });
+  UserSearchResult({required this.id, required this.displayName, this.username, this.avatarUrl});
 }
 
 class FriendsService {
@@ -64,7 +49,7 @@ class FriendsService {
 
   Future<List<FriendModel>> getFriends() async {
     final user = supabase.auth.currentUser;
-    if (user == null) return _getDemoFriends();
+    if (user == null) return [];
 
     try {
       final res = await supabase
@@ -76,17 +61,15 @@ class FriendsService {
       final List<FriendModel> friends = [];
       for (final row in (res as List)) {
         final friendUserId = row['solicitante_id'] == user.id ? row['receptor_id'] : row['solicitante_id'];
-        
-        String tag = 'Amigo Gamer';
+
+        String tag = 'Jugador Gameros';
         String? username;
         String? avatar;
-        String game = 'En el Hub de Gameros';
         int elo = 1000;
 
         try {
           // Columnas reales de public.usuarios confirmadas por el equipo de
-          // Gameros: 'nombre_display', 'username', 'foto_url'. No hay
-          // columna de "juego actual" — se deja el valor por defecto.
+          // Gameros: 'nombre_display', 'username', 'foto_url'.
           final uRow = await supabase.from('usuarios').select().eq('id', friendUserId).maybeSingle();
           if (uRow != null) {
             tag = uRow['nombre_display'] as String? ?? tag;
@@ -106,15 +89,13 @@ class FriendsService {
           gamerTag: tag,
           username: username,
           avatarUrl: avatar,
-          status: game == 'Desconectado' ? 'desconectado' : 'en_linea',
-          currentGame: game,
           tetrisElo: elo,
         ));
       }
 
-      return friends.isNotEmpty ? friends : _getDemoFriends();
+      return friends;
     } catch (_) {
-      return _getDemoFriends();
+      return [];
     }
   }
 
@@ -156,16 +137,45 @@ class FriendsService {
     }
   }
 
-  /// [query] es el código de jugador de 6 caracteres (usuarios.codigo_jugador)
-  /// o el UUID directo. El RPC real (enviar_solicitud_amistad) ya resuelve
-  /// ambos casos y auto-acepta si el otro ya te había mandado una solicitud.
-  Future<bool> sendFriendRequest(String query) async {
+  /// Búsqueda en vivo por nombre o @usuario contra public.usuarios (RLS
+  /// abierta a cualquier usuario autenticado, confirmado por Gameros).
+  /// Excluye al propio usuario logueado.
+  Future<List<UserSearchResult>> searchUsers(String query) async {
+    final q = query.trim();
+    if (q.length < 2) return [];
+    final user = supabase.auth.currentUser;
+
+    try {
+      final res = await supabase
+          .from('usuarios')
+          .select('id, nombre_display, username, foto_url')
+          .or('nombre_display.ilike.%$q%,username.ilike.%$q%')
+          .limit(15);
+
+      return (res as List)
+          .where((r) => r['id'] != user?.id)
+          .map((r) => UserSearchResult(
+                id: r['id'] as String,
+                displayName: r['nombre_display'] as String? ?? 'Jugador Gameros',
+                username: r['username'] as String?,
+                avatarUrl: r['foto_url'] as String?,
+              ))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// [target] es el id de usuario (de un resultado de búsqueda) o el código
+  /// de jugador de 6 caracteres. El RPC real ya resuelve ambos casos y
+  /// auto-acepta si el otro ya te había mandado una solicitud.
+  Future<bool> sendFriendRequest(String target) async {
     final user = supabase.auth.currentUser;
     if (user == null) return false;
 
     try {
       await supabase.rpc('enviar_solicitud_amistad', params: {
-        'p_codigo_o_id': query.trim(),
+        'p_codigo_o_id': target.trim(),
       });
       return true;
     } catch (_) {
@@ -188,55 +198,5 @@ class FriendsService {
         'p_otro_usuario_id': otherUserId,
       });
     } catch (_) {}
-  }
-
-  Future<void> sendDirectMessage(String receiverId, String text) async {
-    final user = supabase.auth.currentUser;
-    if (user == null) return;
-
-    try {
-      await supabase.from('mensajes_amigos').insert({
-        'emisor_id': user.id,
-        'receptor_id': receiverId,
-        'mensaje': text,
-      });
-    } catch (_) {}
-  }
-
-  Future<List<FriendMessageModel>> getDirectMessages(String friendUserId) async {
-    final user = supabase.auth.currentUser;
-    if (user == null) return [];
-
-    try {
-      final res = await supabase
-          .from('mensajes_amigos')
-          .select()
-          .or('and(emisor_id.eq.${user.id},receptor_id.eq.$friendUserId),and(emisor_id.eq.$friendUserId,receptor_id.eq.${user.id})')
-          .order('created_at', ascending: true)
-          .limit(50);
-
-      return (res as List).map((m) {
-        return FriendMessageModel(
-          id: m['id'] as String,
-          senderId: m['emisor_id'] as String,
-          senderGamerTag: m['emisor_id'] == user.id ? 'Tú' : 'Amigo',
-          receiverId: m['receptor_id'] as String,
-          message: m['mensaje'] as String,
-          createdAt: DateTime.tryParse(m['created_at'] ?? '') ?? DateTime.now(),
-          isRead: m['leido'] as bool? ?? false,
-        );
-      }).toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
-  List<FriendModel> _getDemoFriends() {
-    return [
-      FriendModel(friendshipId: 'f1', userId: 'lucas_1', gamerTag: 'Lucas', username: '@Lucas', status: 'en_linea', currentGame: 'Jugando Tetris Now', tetrisElo: 1048),
-      FriendModel(friendshipId: 'f2', userId: 'matias_2', gamerTag: 'Matias_Pro', username: '@Matias', status: 'en_linea', currentGame: 'Jugando TrucoArg', tetrisElo: 1120),
-      FriendModel(friendshipId: 'f3', userId: 'valen_3', gamerTag: 'Valen_Chess', username: '@Valen', status: 'en_linea', currentGame: 'Jugando Chess in Time', tetrisElo: 1250),
-      FriendModel(friendshipId: 'f4', userId: 'nico_4', gamerTag: 'NicoGamer', username: '@Nico', status: 'en_linea', currentGame: 'En el Hub de Gameros', tetrisElo: 1000),
-    ];
   }
 }

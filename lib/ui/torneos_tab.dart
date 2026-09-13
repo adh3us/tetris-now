@@ -17,6 +17,7 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
   List<TournamentModel> _equipos = [];
   List<TournamentInvitationModel> _invitaciones = [];
   bool _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -26,16 +27,21 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-    final all = await _service.getTournaments();
-    final invites = await _service.getMyInvitations();
-    if (!mounted) return;
-    setState(() {
-      _individuales = all.where((t) => t.tipo == 'individual').toList();
-      _equipos = all.where((t) => t.tipo == 'equipo').toList();
-      _invitaciones = invites;
-      _isLoading = false;
-    });
+    setState(() { _isLoading = true; _error = null; });
+    try {
+      final all = await _service.getTournaments();
+      final invites = await _service.getMyInvitations();
+      if (!mounted) return;
+      setState(() {
+        _individuales = all.where((t) => t.tipo == 'individual').toList();
+        _equipos = all.where((t) => t.tipo == 'equipo').toList();
+        _invitaciones = invites;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _error = e.toString(); _isLoading = false; });
+    }
   }
 
   Future<void> _inscribirse(TournamentModel t) async {
@@ -62,16 +68,34 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(14, 12, 14, 0),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
           child: Row(
             children: [
-              Expanded(
+              const Expanded(
                 child: Text('TORNEOS', style: TextStyle(letterSpacing: 1.2, fontWeight: FontWeight.w900, fontSize: 15, color: Colors.white)),
+              ),
+              IconButton(
+                icon: _isLoading
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF5865F2)))
+                    : const Icon(Icons.refresh_rounded, color: Color(0xFF5865F2)),
+                tooltip: 'Refrescar',
+                onPressed: _isLoading ? null : _loadData,
               ),
             ],
           ),
         ),
+        if (_error != null)
+          Container(
+            margin: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF3A1414),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFDA3633)),
+            ),
+            child: Text(_error!, style: const TextStyle(color: Color(0xFFFFA198), fontSize: 11)),
+          ),
         if (_invitaciones.isNotEmpty) _buildInvitationsBanner(),
         Material(
           color: const Color(0xFF080A0F),
@@ -149,8 +173,16 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
 
   Widget _buildList(List<TournamentModel> list) {
     if (list.isEmpty) {
-      return const Center(
-        child: Text('No hay torneos abiertos de Tetris Now por ahora', style: TextStyle(color: Color(0xFF8B949E), fontSize: 12.5)),
+      return RefreshIndicator(
+        onRefresh: _loadData,
+        child: ListView(
+          children: const [
+            SizedBox(height: 120),
+            Center(
+              child: Text('No hay torneos abiertos de Tetris Now por ahora', style: TextStyle(color: Color(0xFF8B949E), fontSize: 12.5)),
+            ),
+          ],
+        ),
       );
     }
     return RefreshIndicator(

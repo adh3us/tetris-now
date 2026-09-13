@@ -1,11 +1,11 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../core/supabase_config.dart';
 import '../game/tetris_types.dart';
 import '../services/tetris_match_service.dart';
 import '../services/tetris_realtime_service.dart';
 import '../services/gameros_profile_service.dart';
-import '../services/friends_service.dart';
 import 'tetris_game_screen.dart';
 
 class MatchLobbyScreen extends StatefulWidget {
@@ -21,7 +21,6 @@ class MatchLobbyScreen extends StatefulWidget {
 class _MatchLobbyScreenState extends State<MatchLobbyScreen> {
   final TetrisMatchService _matchService = TetrisMatchService();
   final GamerosProfileService _profileService = GamerosProfileService();
-  final FriendsService _friendsService = FriendsService();
   late final String _currentUserId;
   String _gamerTag = 'Rey-ToRuS';
 
@@ -156,8 +155,8 @@ class _MatchLobbyScreenState extends State<MatchLobbyScreen> {
   }
 
   void _showInviteFriendBottomSheet() async {
-    final friends = await _friendsService.getFriends();
     if (!mounted) return;
+    final code = _roomCode ?? _matchId ?? '';
 
     showModalBottomSheet(
       context: context,
@@ -175,75 +174,42 @@ class _MatchLobbyScreenState extends State<MatchLobbyScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
-                  'INVITAR AMIGO A LA SALA',
+                  'INVITAR A LA SALA',
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13.5),
                 ),
                 IconButton(icon: const Icon(Icons.close, color: Colors.white70), onPressed: () => Navigator.of(ctx).pop()),
               ],
             ),
             const SizedBox(height: 8),
-            Text(
-              'Comparte la sala "#${_roomCode ?? _matchId}" con tus amigos de Gameros:',
-              style: const TextStyle(color: Color(0xFF8B949E), fontSize: 11.5),
+            const Text(
+              'Compartí este código con tu amigo (por WhatsApp, Discord, etc.) y que lo ingrese en "Tengo un código de sala":',
+              style: TextStyle(color: Color(0xFF8B949E), fontSize: 11.5),
             ),
             const SizedBox(height: 14),
-
-            if (friends.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(child: Text('No tienes amigos conectados en este momento', style: TextStyle(color: Colors.white54, fontSize: 12))),
-              )
-            else
-              Expanded(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: friends.length,
-                  itemBuilder: (context, index) {
-                    final f = friends[index];
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0D1117),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFF30363D)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(Icons.account_circle, color: Color(0xFF5865F2), size: 28),
-                              const SizedBox(width: 10),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(f.gamerTag, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5)),
-                                  Text(f.currentGame, style: const TextStyle(color: Color(0xFF00D26A), fontSize: 9.5)),
-                                ],
-                              ),
-                            ],
-                          ),
-                          ElevatedButton(
-                            onPressed: () {
-                              _friendsService.sendDirectMessage(f.userId, '¡Te invito a jugar un Duelo 1c1 en Tetris Now! Código de sala: ${_roomCode ?? _matchId}');
-                              Navigator.of(ctx).pop();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('¡Invitación enviada a ${f.gamerTag}!')),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF5865F2),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            ),
-                            child: const Text('INVITAR', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0D1117),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF30363D)),
               ),
+              child: Center(
+                child: Text('#$code', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20, letterSpacing: 1.5)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: code));
+                Navigator.of(ctx).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('¡Código copiado!')),
+                );
+              },
+              icon: const Icon(Icons.copy_rounded, size: 16),
+              label: const Text('COPIAR CÓDIGO'),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5865F2)),
+            ),
           ],
         ),
       ),

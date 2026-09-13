@@ -19,16 +19,16 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
-  int _currentIndex = 1; // Arranca en "Jugar"
+  int _currentIndex = 2; // Arranca en "Jugar"
 
-  static const _titles = ['AMIGOS', 'JUGAR', 'SALAS', 'TORNEOS', 'TIENDA'];
+  static const _titles = ['AMIGOS', 'SALAS', 'JUGAR', 'TORNEOS', 'TIENDA'];
 
   @override
   Widget build(BuildContext context) {
     final tabs = <Widget>[
       AmigosTab(isGuest: widget.isGuest),
-      JugarTab(isGuest: widget.isGuest),
       const SalasTab(),
+      JugarTab(isGuest: widget.isGuest),
       const TorneosTab(),
       const TiendaTab(),
     ];
@@ -65,8 +65,8 @@ class _HomeShellState extends State<HomeShell> {
         onTap: (i) => setState(() => _currentIndex = i),
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.people_alt_rounded), label: 'Amigos'),
-          BottomNavigationBarItem(icon: Icon(Icons.flash_on_rounded), label: 'Jugar'),
           BottomNavigationBarItem(icon: Icon(Icons.meeting_room_rounded), label: 'Salas'),
+          BottomNavigationBarItem(icon: Icon(Icons.flash_on_rounded), label: 'Jugar'),
           BottomNavigationBarItem(icon: Icon(Icons.emoji_events_rounded), label: 'Torneos'),
           BottomNavigationBarItem(icon: Icon(Icons.storefront_rounded), label: 'Tienda'),
         ],

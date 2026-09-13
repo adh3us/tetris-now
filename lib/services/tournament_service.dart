@@ -71,35 +71,38 @@ class TournamentService {
   Future<String?> _getTetrisGameId() async {
     if (_tetrisGameId != null) return _tetrisGameId;
     try {
-      final row = await supabase
+      final rows = await supabase
           .from('juegos')
-          .select('id')
+          .select('id, nombre')
           .ilike('nombre', '%tetris%')
-          .maybeSingle();
-      _tetrisGameId = row?['id'] as String?;
+          .limit(1);
+      if (rows is List && rows.isNotEmpty) {
+        _tetrisGameId = rows.first['id'] as String?;
+      }
     } catch (_) {}
     return _tetrisGameId;
   }
 
-  /// Torneos de Tetris Now abiertos a inscripción o en curso.
+  /// Torneos de Tetris Now abiertos a inscripción o en curso. Lanza una
+  /// excepción con un mensaje diagnosticable en vez de tragarse el error,
+  /// para poder distinguir "no hay torneos" de "no se encontró el juego" o
+  /// "falló la consulta" (RLS, nombre de columna, etc).
   Future<List<TournamentModel>> getTournaments() async {
     final gameId = await _getTetrisGameId();
-    if (gameId == null) return [];
-
-    try {
-      final res = await supabase
-          .from('torneos')
-          .select()
-          .eq('juego_id', gameId)
-          .inFilter('estado', ['inscripcion', 'en_curso'])
-          .order('created_at', ascending: false);
-
-      return (res as List)
-          .map((e) => TournamentModel.fromMap(Map<String, dynamic>.from(e)))
-          .toList();
-    } catch (_) {
-      return [];
+    if (gameId == null) {
+      throw Exception('No se encontró "Tetris Now" en public.juegos (revisar el nombre exacto del juego en Gameros)');
     }
+
+    final res = await supabase
+        .from('torneos')
+        .select()
+        .eq('juego_id', gameId)
+        .inFilter('estado', ['inscripcion', 'en_curso'])
+        .order('created_at', ascending: false);
+
+    return (res as List)
+        .map((e) => TournamentModel.fromMap(Map<String, dynamic>.from(e)))
+        .toList();
   }
 
   /// Invitaciones directas pendientes del usuario logueado (individuales o

@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/friends_service.dart';
+import '../services/desafio_service.dart';
 import '../services/gameros_profile_service.dart';
-import 'create_duel_screen.dart';
+import '../core/supabase_config.dart';
+import 'match_lobby_screen.dart';
 
 class FriendsScreen extends StatefulWidget {
   /// Si es true, se muestra sin su propio Scaffold/AppBar (para usarse
@@ -16,22 +19,31 @@ class FriendsScreen extends StatefulWidget {
 
 class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProviderStateMixin {
   final FriendsService _friendsService = FriendsService();
+  final DesafioService _desafioService = DesafioService();
   final GamerosProfileService _profileService = GamerosProfileService();
   late TabController _tabController;
-  final TextEditingController _searchController = TextEditingController();
-  final TextEditingController _chatMsgController = TextEditingController();
 
   List<FriendModel> _friends = [];
   List<FriendRequestModel> _requests = [];
+  List<DesafioModel> _desafios = [];
   GamerosUserProfile? _profile;
   bool _isLoading = true;
+  Timer? _desafiosPollTimer;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadData();
     if (widget.embedded) _loadProfile();
+    _desafiosPollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _loadDesafios());
+  }
+
+  @override
+  void dispose() {
+    _desafiosPollTimer?.cancel();
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadProfile() async {
@@ -46,10 +58,12 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     try {
       final f = await _friendsService.getFriends();
       final r = await _friendsService.getPendingRequests();
+      final d = await _desafioService.misDesafios();
       if (mounted) {
         setState(() {
           _friends = f;
           _requests = r;
+          _desafios = d;
           _isLoading = false;
         });
       }
@@ -58,227 +72,45 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     }
   }
 
-  void _showAddFriendDialog() {
-    _searchController.clear();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF161B22),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: const BorderSide(color: Color(0xFF5865F2))),
-        title: const Row(
-          children: [
-            Icon(Icons.person_add_rounded, color: Color(0xFF5865F2)),
-            SizedBox(width: 8),
-            Text('AGREGAR AMIGO GAMEROS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13.5)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Ingresá el código de jugador de 6 caracteres de tu amigo (lo encuentra en su perfil de Gameros):', style: TextStyle(color: Color(0xFF8B949E), fontSize: 11.5)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _searchController,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
-              textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(
-                hintText: 'Ej: A1B2C3',
-                hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
-                filled: true,
-                fillColor: const Color(0xFF0D1117),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF30363D))),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('CANCELAR', style: TextStyle(color: Color(0xFF8B949E)))),
-          ElevatedButton(
-            onPressed: () async {
-              final q = _searchController.text.trim();
-              if (q.isNotEmpty) {
-                Navigator.of(ctx).pop();
-                final ok = await _friendsService.sendFriendRequest(q);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(ok ? '¡Solicitud enviada!' : 'No se encontró a "$q" o el código es inválido')),
-                  );
-                  _loadData();
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5865F2)),
-            child: const Text('ENVIAR SOLICITUD', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
+  Future<void> _loadDesafios() async {
+    final d = await _desafioService.misDesafios();
+    if (mounted) setState(() => _desafios = d);
   }
 
-  void _openChatDialog(FriendModel friend) async {
-    final messages = await _friendsService.getDirectMessages(friend.userId);
-    _chatMsgController.clear();
+  Future<void> _desafiar(FriendModel friend) async {
+    final gamerTag = _profile?.displayName ?? 'Gamer';
+    final res = await _desafioService.crearDesafio(friend.userId, gamerTag);
     if (!mounted) return;
+    if (res != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('¡Desafío enviado a ${friend.gamerTag}! Tiene 20 segundos para aceptar.')),
+      );
+      _tabController.animateTo(2);
+      _loadDesafios();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo enviar el desafío')),
+      );
+    }
+  }
 
+  Future<void> _responderDesafio(DesafioModel d, bool aceptar) async {
+    final gamerTag = _profile?.displayName ?? 'Gamer';
+    final res = await _desafioService.responderDesafio(d.id, aceptar, gamerTag: gamerTag);
+    if (!mounted) return;
+    if (res != null && aceptar && res['match_id'] != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => MatchLobbyScreen(initialMatchId: res['match_id'] as String)),
+      );
+    }
+    _loadDesafios();
+  }
+
+  void _showAddFriendDialog() {
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setChatState) => AlertDialog(
-          backgroundColor: const Color(0xFF161B22),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Color(0xFF5865F2))),
-          title: Row(
-            children: [
-              const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF38BDF8), size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text('MENSAJES CON ${friend.gamerTag.toUpperCase()}', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900), overflow: TextOverflow.ellipsis),
-              ),
-            ],
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 280,
-            child: Column(
-              children: [
-                Expanded(
-                  child: messages.isEmpty
-                      ? const Center(
-                          child: Text('No hay mensajes previos. ¡Escríbele a tu amigo!', style: TextStyle(color: Colors.white38, fontSize: 11.5)),
-                        )
-                      : ListView.builder(
-                          itemCount: messages.length,
-                          itemBuilder: (context, idx) {
-                            final m = messages[idx];
-                            final isMe = m.senderGamerTag == 'Tú';
-                            return Align(
-                              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                              child: Container(
-                                margin: const EdgeInsets.only(bottom: 6),
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: isMe ? const Color(0xFF4F46E5) : const Color(0xFF21262D),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(m.message, style: const TextStyle(color: Colors.white, fontSize: 11.5)),
-                              ),
-                            );
-                          },
-                        ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _chatMsgController,
-                        style: const TextStyle(color: Colors.white, fontSize: 12),
-                        decoration: InputDecoration(
-                          hintText: 'Escribe un mensaje o reto...',
-                          hintStyle: const TextStyle(color: Colors.white24, fontSize: 11),
-                          filled: true,
-                          fillColor: const Color(0xFF0D1117),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF30363D))),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    IconButton(
-                      icon: const Icon(Icons.send_rounded, color: Color(0xFF38BDF8), size: 22),
-                      onPressed: () async {
-                        final t = _chatMsgController.text.trim();
-                        if (t.isNotEmpty) {
-                          await _friendsService.sendDirectMessage(friend.userId, t);
-                          _chatMsgController.clear();
-                          final updated = await _friendsService.getDirectMessages(friend.userId);
-                          setChatState(() {
-                            messages.clear();
-                            messages.addAll(updated);
-                          });
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('CERRAR', style: TextStyle(color: Color(0xFF8B949E)))),
-          ],
-        ),
-      ),
+      builder: (ctx) => _AddFriendDialog(friendsService: _friendsService, onSent: _loadData),
     );
-  }
-
-  Widget _buildEloHeader() {
-    if (_profile == null) return const SizedBox.shrink();
-    return Container(
-      margin: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF161B22),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF4F46E5).withOpacity(0.5)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.account_circle, size: 32, color: Color(0xFF818CF8)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${_profile!.clanTag != null ? '[${_profile!.clanTag}] ' : ''}${_profile!.displayName}',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (_profile!.username != null)
-                  Text(_profile!.username!, style: const TextStyle(color: Color(0xFF818CF8), fontSize: 10.5)),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFF4F46E5).withOpacity(0.35),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF6366F1)),
-            ),
-            child: Text(
-              'ELO ${_profile!.tetrisElo}',
-              style: const TextStyle(color: Color(0xFFC7D2FE), fontSize: 12, fontWeight: FontWeight.w900),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  PreferredSizeWidget _buildTabBar() {
-    return TabBar(
-      controller: _tabController,
-      indicatorColor: const Color(0xFF5865F2),
-      labelColor: Colors.white,
-      tabs: [
-        Tab(text: 'MIS AMIGOS (${_friends.length})'),
-        Tab(text: 'SOLICITUDES (${_requests.length})'),
-      ],
-    );
-  }
-
-  Widget _buildTabView() {
-    return _isLoading
-        ? const Center(child: CircularProgressIndicator(color: Color(0xFF5865F2)))
-        : TabBarView(
-            controller: _tabController,
-            children: [
-              _buildFriendsList(),
-              _buildRequestsList(),
-            ],
-          );
   }
 
   @override
@@ -323,6 +155,78 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     );
   }
 
+  Widget _buildEloHeader() {
+    if (_profile == null) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161B22),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF4F46E5).withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.account_circle, size: 32, color: Color(0xFF818CF8)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${_profile!.clanTag != null ? '[${_profile!.clanTag}] ' : ''}${_profile!.displayName}',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (_profile!.username != null)
+                  Text(_profile!.username!, style: const TextStyle(color: Color(0xFF818CF8), fontSize: 10.5)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF4F46E5).withOpacity(0.35),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF6366F1)),
+            ),
+            child: Text(
+              'RANGO ${_profile!.tetrisElo}',
+              style: const TextStyle(color: Color(0xFFC7D2FE), fontSize: 12, fontWeight: FontWeight.w900),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildTabBar() {
+    return TabBar(
+      controller: _tabController,
+      indicatorColor: const Color(0xFF5865F2),
+      labelColor: Colors.white,
+      isScrollable: true,
+      tabs: [
+        Tab(text: 'MIS AMIGOS (${_friends.length})'),
+        Tab(text: 'SOLICITUDES (${_requests.length})'),
+        Tab(text: 'DESAFÍOS (${_desafios.length})'),
+      ],
+    );
+  }
+
+  Widget _buildTabView() {
+    return _isLoading
+        ? const Center(child: CircularProgressIndicator(color: Color(0xFF5865F2)))
+        : TabBarView(
+            controller: _tabController,
+            children: [
+              _buildFriendsList(),
+              _buildRequestsList(),
+              _buildDesafiosList(),
+            ],
+          );
+  }
+
   Widget _buildFriendsList() {
     if (_friends.isEmpty) {
       return Center(
@@ -349,7 +253,6 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
       itemCount: _friends.length,
       itemBuilder: (context, index) {
         final f = _friends[index];
-        final isOnline = f.status == 'en_linea';
 
         return Container(
           margin: const EdgeInsets.only(bottom: 10),
@@ -357,18 +260,14 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
           decoration: BoxDecoration(
             color: const Color(0xFF161B22),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: isOnline ? const Color(0xFF5865F2).withOpacity(0.4) : const Color(0xFF30363D)),
+            border: Border.all(color: const Color(0xFF30363D)),
           ),
           child: Row(
             children: [
               Container(
                 width: 46,
                 height: 46,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFF21262D),
-                  border: Border.all(color: isOnline ? const Color(0xFF00D26A) : const Color(0xFF8B949E), width: 1.8),
-                ),
+                decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF21262D)),
                 child: const Icon(Icons.account_circle, size: 34, color: Colors.white70),
               ),
               const SizedBox(width: 12),
@@ -377,54 +276,20 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(f.gamerTag, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13)),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Container(
-                          width: 7,
-                          height: 7,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isOnline ? const Color(0xFF00D26A) : Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(width: 5),
-                        Expanded(
-                          child: Text(
-                            f.currentGame, // e.g. "Jugando Tetris Now", "Jugando TrucoArg", "Jugando Chess in Time"
-                            style: TextStyle(
-                              color: isOnline ? const Color(0xFF38BDF8) : const Color(0xFF8B949E),
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
+                    if (f.username != null)
+                      Text(f.username!, style: const TextStyle(color: Color(0xFF818CF8), fontSize: 10.5)),
+                    Text('RANGO ${f.tetrisElo}', style: const TextStyle(color: Color(0xFF8B949E), fontSize: 10)),
                   ],
                 ),
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.mail_outline_rounded, color: Color(0xFF38BDF8), size: 20),
-                    tooltip: 'Enviar Mensaje / Buzón',
-                    onPressed: () => _openChatDialog(f),
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CreateDuelScreen()));
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF5865F2),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const Text('INVITAR', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                  ),
-                ],
+              ElevatedButton(
+                onPressed: () => _desafiar(f),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF5865F2),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text('DESAFIAR', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -492,6 +357,257 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
           ),
         );
       },
+    );
+  }
+
+  Widget _buildDesafiosList() {
+    if (_desafios.isEmpty) {
+      return const Center(
+        child: Text('No tienes desafíos activos', style: TextStyle(color: Color(0xFF8B949E), fontSize: 12.5)),
+      );
+    }
+    final myId = SupabaseConfig.client.auth.currentUser?.id;
+    return ListView.builder(
+      padding: const EdgeInsets.all(14),
+      itemCount: _desafios.length,
+      itemBuilder: (context, index) {
+        final d = _desafios[index];
+        return _DesafioCard(
+          desafio: d,
+          isMine: d.retadorId == myId,
+          onAceptar: () => _responderDesafio(d, true),
+          onRechazar: () => _responderDesafio(d, false),
+          onExpirado: _loadDesafios,
+        );
+      },
+    );
+  }
+}
+
+class _DesafioCard extends StatefulWidget {
+  final DesafioModel desafio;
+  final bool isMine;
+  final VoidCallback onAceptar;
+  final VoidCallback onRechazar;
+  final VoidCallback onExpirado;
+
+  const _DesafioCard({
+    required this.desafio,
+    required this.isMine,
+    required this.onAceptar,
+    required this.onRechazar,
+    required this.onExpirado,
+  });
+
+  @override
+  State<_DesafioCard> createState() => _DesafioCardState();
+}
+
+class _DesafioCardState extends State<_DesafioCard> {
+  late Timer _timer;
+  Duration _restante = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _restante = widget.desafio.tiempoRestante;
+    _timer = Timer.periodic(const Duration(milliseconds: 300), (_) {
+      final r = widget.desafio.tiempoRestante;
+      if (mounted) setState(() => _restante = r);
+      if (r == Duration.zero) {
+        _timer.cancel();
+        widget.onExpirado();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = (_restante.inMilliseconds / 20000).clamp(0.0, 1.0);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161B22),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE3B341)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.flash_on_rounded, color: Color(0xFFE3B341), size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  widget.isMine ? 'Esperando respuesta...' : '¡Te desafiaron a un 1v1!',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5),
+                ),
+              ),
+              Text('${_restante.inSeconds}s', style: const TextStyle(color: Color(0xFFE3B341), fontWeight: FontWeight.w900)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: const Color(0xFF30363D),
+              valueColor: AlwaysStoppedAnimation(progress > 0.3 ? const Color(0xFF00D26A) : const Color(0xFFDA3633)),
+            ),
+          ),
+          if (!widget.isMine) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: widget.onAceptar,
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00D26A)),
+                    child: const Text('ACEPTAR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: widget.onRechazar,
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDA3633)),
+                    child: const Text('RECHAZAR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AddFriendDialog extends StatefulWidget {
+  final FriendsService friendsService;
+  final VoidCallback onSent;
+
+  const _AddFriendDialog({required this.friendsService, required this.onSent});
+
+  @override
+  State<_AddFriendDialog> createState() => _AddFriendDialogState();
+}
+
+class _AddFriendDialogState extends State<_AddFriendDialog> {
+  final TextEditingController _controller = TextEditingController();
+  List<UserSearchResult> _results = [];
+  Timer? _debounce;
+  bool _isSearching = false;
+
+  void _onChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () async {
+      if (value.trim().length < 2) {
+        setState(() => _results = []);
+        return;
+      }
+      setState(() => _isSearching = true);
+      final r = await widget.friendsService.searchUsers(value);
+      if (mounted) setState(() { _results = r; _isSearching = false; });
+    });
+  }
+
+  Future<void> _sendTo(String targetId, String label) async {
+    Navigator.of(context).pop();
+    final ok = await widget.friendsService.sendFriendRequest(targetId);
+    widget.onSent();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(ok ? '¡Solicitud enviada a $label!' : 'No se pudo enviar la solicitud')),
+    );
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF161B22),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: const BorderSide(color: Color(0xFF5865F2))),
+      title: const Row(
+        children: [
+          Icon(Icons.person_add_rounded, color: Color(0xFF5865F2)),
+          SizedBox(width: 8),
+          Text('AGREGAR AMIGO GAMEROS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13.5)),
+        ],
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Escribí un nombre, @usuario o el código de jugador:', style: TextStyle(color: Color(0xFF8B949E), fontSize: 11.5)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              onChanged: _onChanged,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'Ej: Lucas, @Lucas o A1B2C3',
+                hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+                filled: true,
+                fillColor: const Color(0xFF0D1117),
+                suffixIcon: _isSearching ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 8, height: 8, child: CircularProgressIndicator(strokeWidth: 2))) : null,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF30363D))),
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (_results.isNotEmpty)
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 240),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _results.length,
+                  itemBuilder: (context, i) {
+                    final r = _results[i];
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.account_circle, color: Color(0xFF818CF8)),
+                      title: Text(r.displayName, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                      subtitle: r.username != null ? Text(r.username!, style: const TextStyle(color: Color(0xFF818CF8), fontSize: 11)) : null,
+                      trailing: IconButton(
+                        icon: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF5865F2)),
+                        onPressed: () => _sendTo(r.id, r.displayName),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('CANCELAR', style: TextStyle(color: Color(0xFF8B949E)))),
+        ElevatedButton(
+          onPressed: () {
+            final q = _controller.text.trim();
+            if (q.isNotEmpty) _sendTo(q, q);
+          },
+          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5865F2)),
+          child: const Text('ENVIAR POR CÓDIGO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+        ),
+      ],
     );
   }
 }

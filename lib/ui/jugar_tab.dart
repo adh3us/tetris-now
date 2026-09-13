@@ -71,13 +71,43 @@ class _JugarTabState extends State<JugarTab> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
+    return Center(
+      child: SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // ELO centrado arriba (spec: "Jugar" muestra el ELO centrado).
+            // Perfil + Rango centrados arriba (spec: "Jugar" muestra el
+            // rango centrado).
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF6366F1).withOpacity(0.2),
+                border: Border.all(color: const Color(0xFF818CF8), width: 2),
+              ),
+              child: _profile?.avatarUrl != null
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(32),
+                      child: Image.network(
+                        _profile!.avatarUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Icon(Icons.account_circle, size: 44, color: Color(0xFF818CF8)),
+                      ),
+                    )
+                  : const Icon(Icons.account_circle, size: 44, color: Color(0xFF818CF8)),
+            ),
+            const SizedBox(height: 8),
+            if (!widget.isGuest && _profile != null)
+              Text(
+                _profile!.displayName,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13),
+              ),
+            const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
               decoration: BoxDecoration(
@@ -86,7 +116,7 @@ class _JugarTabState extends State<JugarTab> {
                 border: Border.all(color: const Color(0xFF6366F1)),
               ),
               child: Text(
-                widget.isGuest ? 'MODO INVITADO' : 'ELO ${_profile?.tetrisElo ?? 1000}',
+                widget.isGuest ? 'MODO INVITADO' : 'RANGO ${_profile?.tetrisElo ?? 1000}',
                 style: const TextStyle(color: Color(0xFFC7D2FE), fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1),
               ),
             ),
@@ -222,7 +252,7 @@ class _JugarTabState extends State<JugarTab> {
                                 Expanded(
                                   child: Text(entry.displayName, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
                                 ),
-                                Text('${entry.rating} ELO', style: const TextStyle(color: Color(0xFFC7D2FE), fontSize: 12, fontWeight: FontWeight.w900)),
+                                Text('${entry.rating} RG', style: const TextStyle(color: Color(0xFFC7D2FE), fontSize: 12, fontWeight: FontWeight.w900)),
                               ],
                             ),
                           );
@@ -230,6 +260,7 @@ class _JugarTabState extends State<JugarTab> {
                       ),
           ],
         ),
+      ),
       ),
     );
   }
