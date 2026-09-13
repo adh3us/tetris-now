@@ -8,6 +8,7 @@ class VirtualControllerWrapper extends StatelessWidget {
   final bool isVisible;
   final VoidCallback onToggleTheme;
   final VoidCallback onCycleOpacity;
+  final VoidCallback? onOpenMap;
 
   const VirtualControllerWrapper({
     Key? key,
@@ -17,6 +18,7 @@ class VirtualControllerWrapper extends StatelessWidget {
     this.isVisible = true,
     required this.onToggleTheme,
     required this.onCycleOpacity,
+    this.onOpenMap,
   }) : super(key: key);
 
   @override
@@ -39,87 +41,38 @@ class VirtualControllerWrapper extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Barra de Control Rápido Adaptativa (Zero Overflow)
+          // Barra Compacta de Pausa (Optimizada para espacio máximo de pantalla)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-            color: const Color(0xFF161B22),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+            color: Colors.transparent,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 GestureDetector(
-                  onTap: onToggleTheme,
+                  onTap: () => onAction(GameAction.pause),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF21262D),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: const Color(0xFF30363D)),
+                      color: const Color(0xFFD29922).withOpacity(0.90),
+                      borderRadius: BorderRadius.circular(6),
+                      boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4)],
                     ),
-                    child: Row(
+                    child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.style, size: 11, color: Color(0xFF58A6FF)),
-                        const SizedBox(width: 3),
-                        Text(
-                          initialTheme == ControllerTheme.moba ? "ESTILO: MOBA" : "ESTILO: PS",
-                          style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
-                        ),
+                        Icon(Icons.pause_rounded, size: 12, color: Colors.black),
+                        SizedBox(width: 3),
+                        Text('PAUSA', style: TextStyle(color: Colors.black, fontSize: 8.5, fontWeight: FontWeight.w900, letterSpacing: 0.8)),
                       ],
                     ),
                   ),
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    GestureDetector(
-                      onTap: () => onAction(GameAction.reset),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                        child: const Text('SELECT', style: TextStyle(color: Color(0xFF8B949E), fontSize: 8, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    GestureDetector(
-                      onTap: () => onAction(GameAction.pause),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFD29922),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text('START (PAUSA)', style: TextStyle(color: Colors.black, fontSize: 8, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    GestureDetector(
-                      onTap: onCycleOpacity,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF238636),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.opacity, size: 9, color: Colors.white),
-                            const SizedBox(width: 2),
-                            Text(
-                              opacity >= 0.9 ? '100%' : (opacity >= 0.4 ? '50%' : '25%'),
-                              style: const TextStyle(color: Colors.white, fontSize: 7.5, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
           ),
           initialTheme == ControllerTheme.dualshock
-              ? VirtualDualShockController(onAction: onAction)
-              : MobaTouchController(onAction: onAction),
+              ? VirtualDualShockController(onAction: onAction, onOpenMap: onOpenMap)
+              : MobaTouchController(onAction: onAction, onOpenMap: onOpenMap),
         ],
       ),
     );
@@ -161,9 +114,6 @@ class _LandscapeLeftControlState extends State<LandscapeLeftControl> {
       if (_stickOffset.dy > 14) {
         widget.onAction(GameAction.softDrop);
         _lastMove = now;
-      } else if (_stickOffset.dy < -16) {
-        widget.onAction(GameAction.hardDrop);
-        _lastMove = now;
       }
     }
   }
@@ -177,7 +127,7 @@ class _LandscapeLeftControlState extends State<LandscapeLeftControl> {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            Positioned(top: 0, child: _buildDpadBtn(GameAction.hardDrop, Icons.arrow_drop_up)),
+            Positioned(top: 0, child: _buildDpadBtn(GameAction.rotateCW, Icons.arrow_drop_up)),
             Positioned(bottom: 0, child: _buildDpadBtn(GameAction.softDrop, Icons.arrow_drop_down)),
             Positioned(left: 0, child: _buildDpadBtn(GameAction.moveLeft, Icons.arrow_left)),
             Positioned(right: 0, child: _buildDpadBtn(GameAction.moveRight, Icons.arrow_right)),
@@ -267,12 +217,19 @@ class LandscapeRightControl extends StatelessWidget {
           boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: isMain ? 6 : 3)],
         ),
         alignment: Alignment.center,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (icon != null) Icon(icon, color: Colors.white, size: isMain ? 17 : 12),
-            Text(label, style: TextStyle(color: Colors.white, fontSize: isMain ? 8 : 6, fontWeight: FontWeight.bold)),
-          ],
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Padding(
+            padding: const EdgeInsets.all(2.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (icon != null) Icon(icon, color: Colors.white, size: isMain ? 17 : 11),
+                Text(label, style: TextStyle(color: Colors.white, fontSize: isMain ? 8 : 5.8, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -301,7 +258,8 @@ class LandscapeRightControl extends StatelessWidget {
 /// Plantilla Vertical MOBA (Mobile Legends Style - Compacto y Zero Overflow)
 class MobaTouchController extends StatefulWidget {
   final Function(GameAction) onAction;
-  const MobaTouchController({Key? key, required this.onAction}) : super(key: key);
+  final VoidCallback? onOpenMap;
+  const MobaTouchController({Key? key, required this.onAction, this.onOpenMap}) : super(key: key);
 
   @override
   State<MobaTouchController> createState() => _MobaTouchControllerState();
@@ -331,9 +289,6 @@ class _MobaTouchControllerState extends State<MobaTouchController> {
       if (_stickOffset.dy > 14) {
         widget.onAction(GameAction.softDrop);
         _lastMoveTime = now;
-      } else if (_stickOffset.dy < -16) {
-        widget.onAction(GameAction.hardDrop);
-        _lastMoveTime = now;
       }
     }
   }
@@ -357,12 +312,19 @@ class _MobaTouchControllerState extends State<MobaTouchController> {
           boxShadow: [BoxShadow(color: color.withOpacity(0.35), blurRadius: isMain ? 8 : 4)],
         ),
         alignment: Alignment.center,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (icon != null) Icon(icon, color: Colors.white, size: isMain ? 20 : 13),
-            Text(label, style: TextStyle(color: Colors.white, fontSize: isMain ? 8.5 : 6.5, fontWeight: FontWeight.w900)),
-          ],
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Padding(
+            padding: const EdgeInsets.all(2.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (icon != null) Icon(icon, color: Colors.white, size: isMain ? 20 : 12),
+                Text(label, style: TextStyle(color: Colors.white, fontSize: isMain ? 8.5 : 5.8, fontWeight: FontWeight.w900)),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -372,13 +334,19 @@ class _MobaTouchControllerState extends State<MobaTouchController> {
   Widget build(BuildContext context) {
     return Container(
       height: 142,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
       decoration: const BoxDecoration(
         color: Color(0xFF0F141C),
         border: Border(top: BorderSide(color: Color(0xFF30363D), width: 1)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Center(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.center,
+          child: SizedBox(
+            width: 320,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           // Stick analógico compacto
           GestureDetector(
@@ -411,31 +379,114 @@ class _MobaTouchControllerState extends State<MobaTouchController> {
             ),
           ),
 
-          // Botonera de habilidades MOBA con proporciones acotadas (Zero Overflow)
+          // BOTÓN DE MAPA / ARENA CENTRADO ENTRE EL CURSOR Y LOS BOTONES
+          GestureDetector(
+            onTap: widget.onOpenMap,
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const RadialGradient(
+                  colors: [Color(0xFF818CF8), Color(0xFF4F46E5), Color(0xFF312E81)],
+                ),
+                border: Border.all(color: const Color(0xFFA5B4FC), width: 1.8),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x666366F1), blurRadius: 10, spreadRadius: 1),
+                ],
+              ),
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.map_rounded, color: Colors.white, size: 19),
+                  Text(
+                    'MAPA',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 7.0,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Botonera 3x2 Simil Arcade (Mismo tamaño para todos, Cero Overflow)
           SizedBox(
-            width: 120, height: 120,
-            child: Stack(
-              alignment: Alignment.center,
+            width: 146,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildActionButton(onTap: () => widget.onAction(GameAction.rotateCW), label: 'ROTAR', icon: Icons.refresh, color: const Color(0xFF5865F2), size: 42, isMain: true),
-                Positioned(top: 0, child: _buildActionButton(onTap: () => widget.onAction(GameAction.activateShield), label: 'ESCUDO', icon: Icons.shield, color: const Color(0xFF00D26A), size: 24)),
-                Positioned(left: 0, child: _buildActionButton(onTap: () => widget.onAction(GameAction.hardDrop), label: 'DROP', color: const Color(0xFFF778BA), size: 24)),
-                Positioned(right: 0, child: _buildActionButton(onTap: () => widget.onAction(GameAction.rotateCCW), label: '⟲', color: const Color(0xFFDA3633), size: 24)),
-                Positioned(bottom: 0, child: _buildActionButton(onTap: () => widget.onAction(GameAction.softDrop), label: 'DOWN', color: const Color(0xFF00E5FF), size: 24)),
-                Positioned(top: 4, left: 4, child: _buildActionButton(onTap: () => widget.onAction(GameAction.hold), label: 'HOLD', color: const Color(0xFFA000F0), size: 22)),
+                // Fila Superior (3 botones): HOLD, ESCUDO (Verde), ATAQUE (Cyan)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildActionButton(onTap: () => widget.onAction(GameAction.hold), label: 'HOLD', icon: Icons.pan_tool_alt_rounded, color: const Color(0xFFA000F0), size: 40),
+                    _buildActionButton(onTap: () => widget.onAction(GameAction.activateShield), label: 'ESCUDO', icon: Icons.shield, color: const Color(0xFF00D26A), size: 40),
+                    _buildActionButton(onTap: () => widget.onAction(GameAction.specialAttack), label: 'ATAQUE', icon: Icons.bolt, color: const Color(0xFF00E5FF), size: 40),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                // Fila Inferior (3 botones): ROTAR CCW, ROTAR CW (Principal), DROP
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildActionButton(onTap: () => widget.onAction(GameAction.rotateCCW), label: '⟲ ROTAR', icon: Icons.undo, color: const Color(0xFFDA3633), size: 40),
+                    _buildActionButton(onTap: () => widget.onAction(GameAction.rotateCW), label: '↻ ROTAR', icon: Icons.refresh, color: const Color(0xFF5865F2), size: 40, isMain: true),
+                    _buildActionButton(onTap: () => widget.onAction(GameAction.hardDrop), label: 'DROP', icon: Icons.keyboard_double_arrow_down_rounded, color: const Color(0xFFF778BA), size: 40),
+                  ],
+                ),
               ],
             ),
           ),
         ],
       ),
+    ),
+  ),
+),
     );
   }
 }
 
-/// Plantilla Vertical DualShock Compacta
-class VirtualDualShockController extends StatelessWidget {
+/// Plantilla Vertical DualShock con Stick Analógico y Botones PS
+class VirtualDualShockController extends StatefulWidget {
   final Function(GameAction) onAction;
-  const VirtualDualShockController({Key? key, required this.onAction}) : super(key: key);
+  final VoidCallback? onOpenMap;
+  const VirtualDualShockController({Key? key, required this.onAction, this.onOpenMap}) : super(key: key);
+
+  @override
+  State<VirtualDualShockController> createState() => _VirtualDualShockControllerState();
+}
+
+class _VirtualDualShockControllerState extends State<VirtualDualShockController> {
+  Offset _stickOffset = Offset.zero;
+  static const double _maxDistance = 28.0;
+  DateTime _lastMoveTime = DateTime.now();
+
+  void _onStickDrag(DragUpdateDetails details) {
+    setState(() {
+      final newOffset = _stickOffset + details.delta;
+      _stickOffset = newOffset.distance <= _maxDistance ? newOffset : Offset.fromDirection(newOffset.direction, _maxDistance);
+    });
+
+    final now = DateTime.now();
+    if (now.difference(_lastMoveTime).inMilliseconds > 120) {
+      if (_stickOffset.dx < -12) {
+        widget.onAction(GameAction.moveLeft);
+        _lastMoveTime = now;
+      } else if (_stickOffset.dx > 12) {
+        widget.onAction(GameAction.moveRight);
+        _lastMoveTime = now;
+      }
+
+      if (_stickOffset.dy > 14) {
+        widget.onAction(GameAction.softDrop);
+        _lastMoveTime = now;
+      }
+    }
+  }
 
   Widget _buildButton({
     required VoidCallback onTap, required Widget child, required double size,
@@ -469,24 +520,43 @@ class VirtualDualShockController extends StatelessWidget {
         children: [
           Positioned(
             top: 0, left: 4,
-            child: _buildButton(onTap: () => onAction(GameAction.hold), size: 44, borderRadius: BorderRadius.circular(6), backgroundColor: const Color(0xFF263238), child: const Text('L1 (Hold)', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold))),
+            child: _buildButton(onTap: () => widget.onAction(GameAction.hold), size: 44, borderRadius: BorderRadius.circular(6), backgroundColor: const Color(0xFF263238), child: const Text('L1 (Hold)', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold))),
           ),
           Positioned(
             top: 0, right: 4,
-            child: _buildButton(onTap: () => onAction(GameAction.hardDrop), size: 44, borderRadius: BorderRadius.circular(6), backgroundColor: const Color(0xFF263238), child: const Text('R1 (Drop)', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold))),
+            child: _buildButton(onTap: () => widget.onAction(GameAction.hardDrop), size: 44, borderRadius: BorderRadius.circular(6), backgroundColor: const Color(0xFF263238), child: const Text('R1 (Drop)', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold))),
           ),
+          // Stick analógico DualShock fluido (Reemplazo moderno de la cruceta)
           Positioned(
-            bottom: 4, left: 4,
-            child: SizedBox(
-              width: 82, height: 82,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Positioned(top: 0, child: _buildButton(onTap: () => onAction(GameAction.hardDrop), size: 25, child: const Icon(Icons.arrow_drop_up, color: Colors.white, size: 18))),
-                  Positioned(bottom: 0, child: _buildButton(onTap: () => onAction(GameAction.softDrop), size: 25, child: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 18))),
-                  Positioned(left: 0, child: _buildButton(onTap: () => onAction(GameAction.moveLeft), size: 25, child: const Icon(Icons.arrow_left, color: Colors.white, size: 18))),
-                  Positioned(right: 0, child: _buildButton(onTap: () => onAction(GameAction.moveRight), size: 25, child: const Icon(Icons.arrow_right, color: Colors.white, size: 18))),
-                ],
+            bottom: 4, left: 8,
+            child: GestureDetector(
+              onPanUpdate: _onStickDrag,
+              onPanEnd: (_) => setState(() => _stickOffset = Offset.zero),
+              child: Container(
+                width: 84, height: 84,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF212121),
+                  border: Border.all(color: const Color(0xFF424242), width: 1.5),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    const Icon(Icons.gamepad, color: Colors.white24, size: 24),
+                    Transform.translate(
+                      offset: _stickOffset,
+                      child: Container(
+                        width: 36, height: 36,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(colors: [Color(0xFF616161), Color(0xFF1E1E1E)]),
+                          boxShadow: [BoxShadow(color: Colors.black45, blurRadius: 4)],
+                        ),
+                        child: const Icon(Icons.touch_app, color: Colors.white, size: 14),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -494,9 +564,26 @@ class VirtualDualShockController extends StatelessWidget {
             top: 10, left: 0, right: 0,
             child: Column(
               children: [
-                const Text('GAMEROS', style: TextStyle(color: Color(0xFF263238), fontWeight: FontWeight.w900, fontSize: 9.5, letterSpacing: 2)),
-                const SizedBox(height: 4),
-                _buildButton(onTap: () => onAction(GameAction.activateShield), size: 24, backgroundColor: const Color(0xFFB0BEC5), child: const Text('G', style: TextStyle(color: Color(0xFF1A237E), fontWeight: FontWeight.bold, fontSize: 9.5))),
+                GestureDetector(
+                  onTap: widget.onOpenMap,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF263238),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.map_rounded, size: 10, color: Color(0xFF818CF8)),
+                        SizedBox(width: 2),
+                        Text('MAPA', style: TextStyle(color: Colors.white, fontSize: 7.5, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                _buildButton(onTap: () => widget.onAction(GameAction.activateShield), size: 24, backgroundColor: const Color(0xFFB0BEC5), child: const Text('G', style: TextStyle(color: Color(0xFF1A237E), fontWeight: FontWeight.bold, fontSize: 9.5))),
               ],
             ),
           ),
@@ -507,10 +594,10 @@ class VirtualDualShockController extends StatelessWidget {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  Positioned(top: 0, child: _buildButton(onTap: () => onAction(GameAction.activateShield), size: 25, child: const Text('△', style: TextStyle(color: Color(0xFF00E676), fontSize: 13, fontWeight: FontWeight.w900)))),
-                  Positioned(bottom: 0, child: _buildButton(onTap: () => onAction(GameAction.rotateCW), size: 25, child: const Text('✕', style: TextStyle(color: Color(0xFF2979FF), fontSize: 13, fontWeight: FontWeight.w900)))),
-                  Positioned(left: 0, child: _buildButton(onTap: () => onAction(GameAction.hardDrop), size: 25, child: const Text('▢', style: TextStyle(color: Color(0xFFF50057), fontSize: 13, fontWeight: FontWeight.w900)))),
-                  Positioned(right: 0, child: _buildButton(onTap: () => onAction(GameAction.rotateCCW), size: 25, child: const Text('◯', style: TextStyle(color: Color(0xFFFF1744), fontSize: 13, fontWeight: FontWeight.w900)))),
+                  Positioned(top: 0, child: _buildButton(onTap: () => widget.onAction(GameAction.activateShield), size: 25, child: const Text('△', style: TextStyle(color: Color(0xFF00E676), fontSize: 13, fontWeight: FontWeight.w900)))),
+                  Positioned(bottom: 0, child: _buildButton(onTap: () => widget.onAction(GameAction.rotateCW), size: 25, child: const Text('✕', style: TextStyle(color: Color(0xFF2979FF), fontSize: 13, fontWeight: FontWeight.w900)))),
+                  Positioned(left: 0, child: _buildButton(onTap: () => widget.onAction(GameAction.hardDrop), size: 25, child: const Text('▢', style: TextStyle(color: Color(0xFFF50057), fontSize: 13, fontWeight: FontWeight.w900)))),
+                  Positioned(right: 0, child: _buildButton(onTap: () => widget.onAction(GameAction.rotateCCW), size: 25, child: const Text('◯', style: TextStyle(color: Color(0xFFFF1744), fontSize: 13, fontWeight: FontWeight.w900)))),
                 ],
               ),
             ),

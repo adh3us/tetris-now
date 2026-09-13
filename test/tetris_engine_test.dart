@@ -4,10 +4,10 @@ import '../lib/game/tetris_types.dart';
 
 void main() {
   group('TetrisEngine - Inicialización y Bag', () {
-    test('El tablero inicia vacío (10x20) y con estado correcto', () {
+    test('El tablero inicia vacío (10x40 con Vanish Zone) y con estado correcto', () {
       final engine = TetrisEngine();
-      expect(TetrisEngine.cols, 10);
-      expect(TetrisEngine.rows, 20);
+      expect(engine.cols, 10);
+      expect(engine.rows, 40);
       expect(engine.linesCleared, 0);
       expect(engine.linesSent, 0);
       expect(engine.isGameOver, false);
@@ -46,7 +46,7 @@ void main() {
     test('Hard drop fija la pieza en el fondo inmediatamente', () {
       final engine = TetrisEngine();
       final result = engine.hardDrop();
-      
+
       expect(result, isNotNull);
       expect(engine.currentPiece, isNotNull);
       expect(engine.canHold, true);
@@ -57,7 +57,7 @@ void main() {
     test('Hold reserva la pieza actual y saca la siguiente', () {
       final engine = TetrisEngine();
       final firstType = engine.currentPiece!.type;
-      
+
       expect(engine.hold(), true);
       expect(engine.holdPiece, firstType);
       expect(engine.canHold, false);
@@ -69,48 +69,44 @@ void main() {
       final engine = TetrisEngine();
       engine.hold();
       expect(engine.canHold, false);
-      
+
       engine.hardDrop();
       expect(engine.canHold, true);
     });
   });
 
-  group('TetrisEngine - Mega Estructuras (Oro y Plata)', () {
-    test('Detecta Mega Bloque de Oro al juntar 4x4 piezas iguales', () {
+  group('TetrisEngine - Sistema de Combate (HP)', () {
+    test('takeDamage reduce HP y activa Game Over al llegar a 0', () {
       final engine = TetrisEngine();
-      for (int y = 16; y < 20; y++) {
-        for (int x = 0; x < 4; x++) {
-          engine.grid[y][x] = Cell(type: TetrominoType.O, armor: 0, tier: ArmorTier.none);
-        }
-      }
+      expect(engine.currentHp, 100);
 
-      engine.detectMegaStructures();
+      engine.takeDamage(40);
+      expect(engine.currentHp, 60);
+      expect(engine.isGameOver, false);
 
-      for (int y = 16; y < 20; y++) {
-        for (int x = 0; x < 4; x++) {
-          expect(engine.grid[y][x]!.tier, ArmorTier.gold);
-          expect(engine.grid[y][x]!.armor, 3);
-        }
-      }
+      engine.takeDamage(100);
+      expect(engine.currentHp, 0);
+      expect(engine.isGameOver, true);
     });
 
-    test('Detecta Mega Bloque de Plata al juntar 4x4 piezas mixtas', () {
+    test('healHp no supera el máximo de 100', () {
       final engine = TetrisEngine();
-      for (int y = 16; y < 20; y++) {
-        for (int x = 0; x < 4; x++) {
-          final type = (x < 2) ? TetrominoType.I : TetrominoType.O;
-          engine.grid[y][x] = Cell(type: type, armor: 0, tier: ArmorTier.none);
-        }
-      }
+      engine.takeDamage(30);
+      expect(engine.currentHp, 70);
 
-      engine.detectMegaStructures();
+      final healed = engine.healHp(50);
+      expect(healed, 30);
+      expect(engine.currentHp, 100);
+    });
 
-      for (int y = 16; y < 20; y++) {
-        for (int x = 0; x < 4; x++) {
-          expect(engine.grid[y][x]!.tier, ArmorTier.silver);
-          expect(engine.grid[y][x]!.armor, 1);
-        }
-      }
+    test('Escudo activo bloquea el daño', () {
+      final engine = TetrisEngine();
+      engine.defenseEnergy = 5;
+      expect(engine.activateShield(), true);
+      expect(engine.isShieldActive, true);
+
+      engine.takeDamage(50);
+      expect(engine.currentHp, 100);
     });
   });
 
@@ -129,24 +125,23 @@ void main() {
       expect(engine.defenseEnergy, 5);
     });
 
-    test('Activación de Escudo otorga 20 segundos de inmunidad y bloquea basura', () {
+    test('Activación de Escudo otorga inmunidad y bloquea basura', () {
       final engine = TetrisEngine();
       engine.defenseEnergy = 5;
 
       expect(engine.activateShield(), true);
       expect(engine.isShieldActive, true);
-      expect(engine.shieldSecondsRemaining, 20);
       expect(engine.defenseEnergy, 0);
 
-      final initialGridState = engine.grid[19].every((c) => c == null);
+      final lastRow = engine.rows - 1;
+      final initialGridState = engine.grid[lastRow].every((c) => c == null);
       engine.receiveGarbage(4);
-      expect(engine.grid[19].every((c) => c == null), initialGridState);
+      expect(engine.grid[lastRow].every((c) => c == null), initialGridState);
 
-      for (int i = 0; i < 20; i++) {
+      for (int i = 0; i < 25; i++) {
         engine.updateShieldTimer();
       }
       expect(engine.isShieldActive, false);
-      expect(engine.shieldSecondsRemaining, 0);
     });
 
     test('Recepción de basura normal cuando no hay escudo', () {
@@ -154,7 +149,9 @@ void main() {
       expect(engine.isShieldActive, false);
 
       engine.receiveGarbage(2);
-      final lastRowHasGarbage = engine.grid[19].any((c) => c?.type == TetrominoType.GARBAGE);
+      final lastRow = engine.rows - 1;
+      final lastRowHasGarbage =
+          engine.grid[lastRow].any((c) => c?.type == TetrominoType.GARBAGE);
       expect(lastRowHasGarbage, true);
     });
   });

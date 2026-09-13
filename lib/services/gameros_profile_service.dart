@@ -64,40 +64,33 @@ class GamerosProfileService {
           .maybeSingle();
 
       if (userRow != null) {
-        // En Gameros: 'nombre' o 'nombre_completo' es Rey-ToRuS, 'username' es @ToRuS
-        displayName = userRow['nombre'] ??
-            userRow['nombre_completo'] ??
-            userRow['display_name'] ??
-            userRow['gamertag'] ??
-            displayName;
-
-        username = userRow['username'] ??
-            userRow['nombre_usuario'] ??
-            userRow['alias'] ??
-            username;
-
-        avatarUrl = userRow['foto_url'] ??
-            userRow['avatar_url'] ??
-            userRow['foto'] ??
-            avatarUrl;
-
-        nivel = userRow['nivel'] as int? ?? userRow['level'] as int? ?? 1;
-        reputacion = userRow['reputacion'] as int? ?? userRow['reputation'] as int? ?? 100;
+        // Columnas reales confirmadas por el equipo de Gameros (13/09/2026):
+        // 'nombre_display' (no 'nombre'/'nombre_completo'/'display_name'/'gamertag'),
+        // 'username', 'foto_url'. 'nivel'/'reputacion' no existen como
+        // columnas reales en public.usuarios — se dejan en su valor por
+        // defecto, no se muestran como si vinieran de Gameros.
+        displayName = userRow['nombre_display'] ?? displayName;
+        username = userRow['username'] ?? username;
+        avatarUrl = userRow['foto_url'] ?? avatarUrl;
       }
     } catch (_) {}
 
-    // 2. Consultar Clan / Equipo en Gameros Core
+    // 2. Consultar Clan en Gameros Core (public.clanes / public.miembros_clan,
+    //    no 'equipos'/'miembros_equipo' — esa tabla no existe). Columnas
+    //    verificadas contra lib/clanes.dart del repo de Gameros: la fila de
+    //    membresía usa 'usuario_id' y 'clan_id', el estado activo es
+    //    'estado' = 'activo', y clanes solo tiene 'nombre' (no existe 'tag').
     try {
       final memberRow = await supabase
-          .from('miembros_equipo')
-          .select('equipos(nombre, tag)')
+          .from('miembros_clan')
+          .select('clan_id, clanes(nombre)')
           .eq('usuario_id', user.id)
+          .eq('estado', 'activo')
           .maybeSingle();
 
-      if (memberRow != null && memberRow['equipos'] != null) {
-        final eq = memberRow['equipos'];
-        clanName = eq['nombre'] as String?;
-        clanTag = eq['tag'] as String?;
+      if (memberRow != null && memberRow['clanes'] != null) {
+        final clan = memberRow['clanes'];
+        clanName = clan['nombre'] as String?;
       }
     } catch (_) {}
 

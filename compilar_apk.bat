@@ -1,16 +1,15 @@
 @echo off
-chcp 65001 >nul
 title Compilador Gameros Tetris APK
+cd /d "%~dp0"
+
 echo =========================================================
 echo       COMPILACION DIRECTA - GAMEROS TETRIS (FLUTTER)
 echo =========================================================
 echo.
 
-cd /d "%~dp0"
-
 if exist "android\local.properties" del /f /q "android\local.properties"
 
-echo [1/2] Obteniendo dependencias de Flutter...
+echo [1/2] Actualizando dependencias de Flutter...
 call flutter pub get
 
 echo.
@@ -20,22 +19,16 @@ call flutter build apk --debug --android-skip-build-dependency-validation
 echo.
 echo =========================================================
 set "APK_SRC=%~dp0build\app\outputs\flutter-apk\app-debug.apk"
-
 if exist "%APK_SRC%" (
-    echo [EXITO TOTAL] Tu archivo APK se genero correctamente:
+    echo [EXITO TOTAL] El APK se compilo correctamente.
     echo %APK_SRC%
     echo.
     copy /Y "%APK_SRC%" "%USERPROFILE%\Desktop\Tetris_Now_Debug.apk" >nul 2>&1
-    if exist "%USERPROFILE%\Desktop\Tetris_Now_Debug.apk" (
-        echo [COPIA EN ESCRITORIO] %USERPROFILE%\Desktop\Tetris_Now_Debug.apk
-    )
-    if exist "G:\Mi unidad" (
-        copy /Y "%APK_SRC%" "G:\Mi unidad\Tetris_Now_Debug.apk" >nul 2>&1
-        echo [GOOGLE DRIVE] Copiado a G:\Mi unidad\Tetris_Now_Debug.apk
-    )
+    echo APK copiado a tu Escritorio: %USERPROFILE%\Desktop\Tetris_Now_Debug.apk
 ) else (
-    echo [AVISO] Hubo un error durante la compilacion.
+    echo [ERROR] No se encontro el APK generado.
 )
 echo =========================================================
 echo.
+echo Presiona cualquier tecla para salir...
 pause

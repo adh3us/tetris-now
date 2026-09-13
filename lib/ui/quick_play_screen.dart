@@ -6,20 +6,14 @@ import '../services/tetris_match_service.dart';
 import '../services/tetris_realtime_service.dart';
 import 'tetris_game_screen.dart';
 
-/// Pantalla Oficial de Búsqueda Rápida 1v1 (Matchmaking Automático Gameros)
-class CreateDuelScreen extends StatefulWidget {
-  const CreateDuelScreen({Key? key}) : super(key: key);
+class QuickPlayScreen extends StatefulWidget {
+  const QuickPlayScreen({Key? key}) : super(key: key);
 
   @override
-  State<CreateDuelScreen> createState() => _CreateDuelScreenState();
+  State<QuickPlayScreen> createState() => _QuickPlayScreenState();
 }
 
-/// Alias para compatibilidad de rutas
-class QuickPlayScreen extends CreateDuelScreen {
-  const QuickPlayScreen({Key? key}) : super(key: key);
-}
-
-class _CreateDuelScreenState extends State<CreateDuelScreen> with SingleTickerProviderStateMixin {
+class _QuickPlayScreenState extends State<QuickPlayScreen> with SingleTickerProviderStateMixin {
   final TetrisMatchService _matchService = TetrisMatchService();
   final GamerosProfileService _profileService = GamerosProfileService();
 
@@ -71,7 +65,6 @@ class _CreateDuelScreenState extends State<CreateDuelScreen> with SingleTickerPr
       if (status == 'matched' && matchId != null) {
         _entrarAPartida(matchId, teamId ?? 'team_1');
       } else if (status == 'waiting' && matchId != null) {
-        // Polling cada 2 segundos esperando a que ingrese el rival
         _pollTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
           if (_isCancelled) {
             timer.cancel();
@@ -87,7 +80,7 @@ class _CreateDuelScreenState extends State<CreateDuelScreen> with SingleTickerPr
     } catch (e) {
       if (mounted && !_isCancelled) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error en la cola de emparejamiento: $e')),
+          SnackBar(content: Text('Error al conectar con la cola: $e')),
         );
       }
     }
@@ -102,10 +95,11 @@ class _CreateDuelScreenState extends State<CreateDuelScreen> with SingleTickerPr
     final userId = user?.id ?? 'guest_player';
 
     final realtime = TetrisRealtimeService(
+      supabase: _matchService.supabase,
       matchId: matchId,
+      myUserId: userId,
       myTeamId: teamId,
-      opponentTeamId: teamId == 'team_1' ? 'team_2' : 'team_1',
-      currentUserId: userId,
+      myGamerTag: _gamerTag,
     );
 
     if (mounted) {
@@ -167,7 +161,6 @@ class _CreateDuelScreenState extends State<CreateDuelScreen> with SingleTickerPr
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Radar Animado Neón
               RotationTransition(
                 turns: _radarController,
                 child: Container(
@@ -210,8 +203,6 @@ class _CreateDuelScreenState extends State<CreateDuelScreen> with SingleTickerPr
                 ),
               ),
               const SizedBox(height: 28),
-
-              // Texto Estado
               const Text(
                 'BUSCANDO RIVAL EN GAMEROS...',
                 style: TextStyle(
@@ -227,8 +218,6 @@ class _CreateDuelScreenState extends State<CreateDuelScreen> with SingleTickerPr
                 style: const TextStyle(color: Color(0xFF818CF8), fontSize: 13, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 14),
-
-              // Contador de Tiempo en cola
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
@@ -249,8 +238,6 @@ class _CreateDuelScreenState extends State<CreateDuelScreen> with SingleTickerPr
                 ),
               ),
               const SizedBox(height: 36),
-
-              // Botón Cancelar Búsqueda
               OutlinedButton.icon(
                 onPressed: _cancelarYSalir,
                 icon: const Icon(Icons.close_rounded, color: Color(0xFFEF4444)),

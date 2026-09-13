@@ -38,32 +38,8 @@ class GamerosAuthService {
   }
 
   Future<void> signInWithGoogle() async {
-    try {
-      // Forzar a limpiar caché para que Google Play Services siempre pregunte qué cuenta usar
-      try {
-        await _googleSignIn.signOut();
-      } catch (_) {}
-
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) {
-        throw const AuthException('Inicio de sesión con Google cancelado por el usuario.');
-      }
-
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final accessToken = googleAuth.accessToken;
-      final idToken = googleAuth.idToken;
-
-      if (idToken != null) {
-        await supabase.auth.signInWithIdToken(
-          provider: OAuthProvider.google,
-          idToken: idToken,
-          accessToken: accessToken,
-        );
-        return;
-      }
-    } catch (_) {}
-
-    // Fallback oficial de Supabase OAuth
+    // Flujo directo oficial de Supabase OAuth: solicita la cuenta de Google una sola vez
+    // y retorna automáticamente al juego a través del deep link de AndroidManifest
     await supabase.auth.signInWithOAuth(
       OAuthProvider.google,
       redirectTo: 'io.supabase.tetrisnow://login-callback',

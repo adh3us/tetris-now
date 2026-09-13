@@ -1,4 +1,3 @@
-import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 enum TetrisSfx {
@@ -24,7 +23,6 @@ class TetrisAudioService {
   }
 
   bool isSoundEnabled = true;
-  bool isHapticsEnabled = true;
 
   // Pool de reproductores para baja latencia a 60 FPS
   final List<AudioPlayer> _sfxPool = [];
@@ -54,38 +52,8 @@ class TetrisAudioService {
     }
   }
 
-  /// Reproduce feedback sonoro y háptico con baja latencia
+  /// Reproduce feedback sonoro puro de baja latencia (sin vibración)
   void play(TetrisSfx sfx) {
-    // 1. Hápticos de vibración
-    if (isHapticsEnabled) {
-      switch (sfx) {
-        case TetrisSfx.move:
-        case TetrisSfx.rotate:
-          HapticFeedback.selectionClick();
-          break;
-        case TetrisSfx.hold:
-        case TetrisSfx.softDrop:
-          HapticFeedback.lightImpact();
-          break;
-        case TetrisSfx.hardDrop:
-        case TetrisSfx.lineClear:
-        case TetrisSfx.combo:
-          HapticFeedback.mediumImpact();
-          break;
-        case TetrisSfx.tetris:
-        case TetrisSfx.shieldActivate:
-          HapticFeedback.heavyImpact();
-          break;
-        case TetrisSfx.damageReceived:
-        case TetrisSfx.gameOver:
-          HapticFeedback.vibrate();
-          break;
-        default:
-          break;
-      }
-    }
-
-    // 2. Audio SFX
     if (!isSoundEnabled) return;
 
     final fileName = _sfxFiles[sfx];

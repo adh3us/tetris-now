@@ -1,0 +1,17 @@
+# Flutter and Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+
+# Android
+android/.gradle/
+android/local.properties
+android/**/build/
+android/app/build/
+**/GeneratedPluginRegistrant.java
+
+# System
+.DS_Store
+Thumbs.db

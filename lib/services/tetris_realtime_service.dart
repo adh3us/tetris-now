@@ -12,10 +12,16 @@ class TetrisRealtimeService {
 
   Function(String userId, String teamId)? onPlayerReady;
   Function()? onMatchStart;
-  Function(int lines, CubeType tier)? onIncomingAttack;
+  Function(int lines, CubeType tier, int damageHp, int diamondLines, int opponentHp)? onIncomingAttack;
   Function(String userId, String teamId)? onPlayerKnockout;
   Function(String winnerTeamId)? onMatchEnd;
   Function(bool isOpponentConnected)? onOpponentConnectionChanged;
+  /// Distinto de onMatchEnd: se dispara solo cuando el rival se declara
+  /// abandonado por timeout real (no por fin de partida jugado), para poder
+  /// aplicar la penalización de ELO contra su user_id real.
+  Function(String opponentUserId)? onOpponentTimeout;
+
+  String? opponentUserId;
 
   Timer? _reconnectTimer;
   int reconnectSecondsRemaining = 30;
@@ -33,6 +39,24 @@ class TetrisRealtimeService {
     this.onOpponentConnectionChanged,
   });
 
+  bool _checkIsOpponent(dynamic p) {
+    if (p == null) return false;
+    try {
+      if (p is Map) {
+        final isOpp = p['user_id'] != null && p['user_id'] != currentUserId;
+        if (isOpp) opponentUserId = p['user_id'] as String;
+        return isOpp;
+      }
+      final dynamic payload = p.payload;
+      if (payload is Map) {
+        final isOpp = payload['user_id'] != null && payload['user_id'] != currentUserId;
+        if (isOpp) opponentUserId = payload['user_id'] as String;
+        return isOpp;
+      }
+    } catch (_) {}
+    return false;
+  }
+
   void connect() {
     final client = SupabaseConfig.client;
     _channel = client.channel('match:$matchId');
@@ -41,17 +65,36 @@ class TetrisRealtimeService {
       bool opponentFound = false;
       try {
         final dynamic state = _channel.presenceState();
-        if (state is Iterable) {
-          for (final dynamic item in state) {
-            final dynamic payloads = item.payloads;
-            if (payloads is Iterable) {
-              for (final dynamic p in payloads) {
-                if (p is Map && p['user_id'] != currentUserId) {
+        if (state is Map) {
+          state.forEach((key, val) {
+            if (val is Iterable) {
+              for (final dynamic item in val) {
+                if (_checkIsOpponent(item)) {
                   opponentFound = true;
                   break;
                 }
               }
+            } else if (_checkIsOpponent(val)) {
+              opponentFound = true;
             }
+          });
+        } else if (state is Iterable) {
+          for (final dynamic item in state) {
+            if (_checkIsOpponent(item)) {
+              opponentFound = true;
+              break;
+            }
+            try {
+              final dynamic payloads = item.payloads;
+              if (payloads is Iterable) {
+                for (final dynamic p in payloads) {
+                  if (_checkIsOpponent(p)) {
+                    opponentFound = true;
+                    break;
+                  }
+                }
+              }
+            } catch (_) {}
           }
         }
       } catch (_) {}
@@ -64,13 +107,11 @@ class TetrisRealtimeService {
       try {
         final dynamic newPresences = payload.newPresences;
         if (newPresences is Iterable && newPresences.isNotEmpty) {
-          final dynamic first = newPresences.first;
-          final dynamic payloads = first.payloads;
-          if (payloads is Iterable && payloads.isNotEmpty) {
-            final dynamic p = payloads.first;
-            if (p is Map && p['user_id'] != currentUserId) {
+          for (final dynamic item in newPresences) {
+            if (_checkIsOpponent(item)) {
               _cancelReconnectTimer();
               onOpponentConnectionChanged?.call(true);
+              break;
             }
           }
         }
@@ -81,13 +122,11 @@ class TetrisRealtimeService {
       try {
         final dynamic leftPresences = payload.leftPresences;
         if (leftPresences is Iterable && leftPresences.isNotEmpty) {
-          final dynamic first = leftPresences.first;
-          final dynamic payloads = first.payloads;
-          if (payloads is Iterable && payloads.isNotEmpty) {
-            final dynamic p = payloads.first;
-            if (p is Map && p['user_id'] != currentUserId) {
+          for (final dynamic item in leftPresences) {
+            if (_checkIsOpponent(item)) {
               _startReconnectTimer();
               onOpponentConnectionChanged?.call(false);
+              break;
             }
           }
         }
@@ -113,15 +152,23 @@ class TetrisRealtimeService {
     _channel.onBroadcast(
       event: 'team_attack',
       callback: (payload) {
-        final targetTeamId = payload['target_team_id'] as String;
-        final lines = payload['lines'] as int;
+        final senderTeamId = payload['sender_team_id'] as String?;
+        if (senderTeamId != myTeamId) {
+          _cancelReconnectTimer();
+          onOpponentConnectionChanged?.call(true);
+        }
+        final lines = payload['lines'] as int? ?? 0;
+        final damageHp = payload['damage_hp'] as int? ?? (lines > 0 ? 10 : 0);
+        final diamondLines = payload['diamond_lines'] as int? ?? 0;
+        final opponentHp = payload['sender_hp'] as int? ?? 100;
         final tierStr = payload['tier'] as String? ?? 'none';
 
-        if (targetTeamId == myTeamId) {
+        // Si el ataque viene del rival (no es mi propio eco), recibir el ataque!
+        if (senderTeamId != myTeamId && (lines > 0 || damageHp > 0 || diamondLines > 0)) {
           final tier = tierStr == 'gold'
               ? CubeType.gold
-              : (tierStr == 'silver' ? CubeType.silver : CubeType.none);
-          onIncomingAttack?.call(lines, tier);
+              : (tierStr == 'silver' ? CubeType.silver : (tierStr == 'diamond' ? CubeType.diamond : CubeType.none));
+          onIncomingAttack?.call(lines, tier, damageHp, diamondLines, opponentHp);
         }
       },
     );
@@ -164,13 +211,17 @@ class TetrisRealtimeService {
 
   void _startReconnectTimer() {
     if (_reconnectTimer != null && _reconnectTimer!.isActive) return;
-    reconnectSecondsRemaining = 30;
+    reconnectSecondsRemaining = 120; // 2 minutos de tolerancia máxima para evitar cortes prematuros
 
     _reconnectTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       reconnectSecondsRemaining--;
       if (reconnectSecondsRemaining <= 0) {
         timer.cancel();
+        // Solo finalizar por abandono prolongado de 2 minutos sin conexión
         onMatchEnd?.call(myTeamId);
+        if (opponentUserId != null) {
+          onOpponentTimeout?.call(opponentUserId!);
+        }
       }
     });
   }
@@ -201,15 +252,23 @@ class TetrisRealtimeService {
   Future<void> sendAttack({
     required int lines,
     CubeType tier = CubeType.none,
+    int damageHp = 0,
+    int diamondLines = 0,
+    int senderHp = 100,
   }) async {
-    if (lines <= 0) return;
+    if (lines <= 0 && damageHp <= 0 && diamondLines <= 0) return;
     await _channel.sendBroadcastMessage(
       event: 'team_attack',
       payload: {
         'sender_team_id': myTeamId,
         'target_team_id': opponentTeamId,
         'lines': lines,
-        'tier': tier == CubeType.gold ? 'gold' : (tier == CubeType.silver ? 'silver' : 'none'),
+        'tier': tier == CubeType.gold
+            ? 'gold'
+            : (tier == CubeType.silver ? 'silver' : (tier == CubeType.diamond ? 'diamond' : 'none')),
+        'damage_hp': damageHp,
+        'diamond_lines': diamondLines,
+        'sender_hp': senderHp,
       },
     );
   }

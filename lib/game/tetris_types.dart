@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 enum TetrominoType { I, J, L, O, S, T, Z, GARBAGE }
 
-enum CubeType { none, silver, gold }
+enum CubeType { none, silver, gold, diamond }
 
 typedef ArmorTier = CubeType;
 
@@ -19,6 +19,7 @@ enum GameAction {
   rotateCCW,
   hold,
   activateShield,
+  specialAttack, // Ataque especial de basura al rival
   pause,
   reset,
 }
@@ -67,6 +68,9 @@ class AttackResult {
   final int energyGained;
   final int goldCubeLines;
   final int silverCubeLines;
+  final int damageHp;
+  final int diamondLines;
+  final int hpHealed;
 
   AttackResult({
     required this.linesCleared,
@@ -74,6 +78,9 @@ class AttackResult {
     required this.energyGained,
     this.goldCubeLines = 0,
     this.silverCubeLines = 0,
+    this.damageHp = 0,
+    this.diamondLines = 0,
+    this.hpHealed = 0,
   });
 }
 
@@ -131,4 +138,60 @@ const Map<TetrominoType, List<List<List<int>>>> tetrominoShapes = {
     [[0,0,0],[1,1,1],[1,0,0]],
     [[1,1,0],[0,1,0],[0,1,0]],
   ],
+};
+
+
+/// Escenarios y Arenas Temáticas de Combate (Fase D4)
+enum ArenaTheme {
+  cyberpunk,
+  gamerosArena,
+  deepSpace,
+  retroArcade,
+}
+
+class ArenaVisualData {
+  final String name;
+  final List<Color> bgGradient;
+  final Color gridColor;
+  final Color dangerColor;
+  final Color ambientColor;
+
+  const ArenaVisualData({
+    required this.name,
+    required this.bgGradient,
+    required this.gridColor,
+    required this.dangerColor,
+    required this.ambientColor,
+  });
+}
+
+const Map<ArenaTheme, ArenaVisualData> arenaVisualPresets = {
+  ArenaTheme.cyberpunk: ArenaVisualData(
+    name: 'CYBERPUNK NEÓN',
+    bgGradient: [Color(0xFF111827), Color(0xFF070A0F)],
+    gridColor: Color(0x661F2937),
+    dangerColor: Color(0x66EF4444),
+    ambientColor: Color(0xFF00E5FF),
+  ),
+  ArenaTheme.gamerosArena: ArenaVisualData(
+    name: 'GAMEROS ARENA',
+    bgGradient: [Color(0xFF1E1B4B), Color(0xFF0F0E2A)],
+    gridColor: Color(0x664338CA),
+    dangerColor: Color(0x88EC4899),
+    ambientColor: Color(0xFF818CF8),
+  ),
+  ArenaTheme.deepSpace: ArenaVisualData(
+    name: 'ESPACIO PROFUNDO',
+    bgGradient: [Color(0xFF050B14), Color(0xFF010408)],
+    gridColor: Color(0x440284C7),
+    dangerColor: Color(0x66F43F5E),
+    ambientColor: Color(0xFF38BDF8),
+  ),
+  ArenaTheme.retroArcade: ArenaVisualData(
+    name: 'RETRO 1989 CRT',
+    bgGradient: [Color(0xFF022C22), Color(0xFF021612)],
+    gridColor: Color(0x55059669),
+    dangerColor: Color(0x88F59E0B),
+    ambientColor: Color(0xFF10B981),
+  ),
 };

@@ -10,8 +10,9 @@ import 'tetris_game_screen.dart';
 
 class MatchLobbyScreen extends StatefulWidget {
   final String? initialMatchId;
+  final String? tournamentId;
 
-  const MatchLobbyScreen({Key? key, this.initialMatchId}) : super(key: key);
+  const MatchLobbyScreen({Key? key, this.initialMatchId, this.tournamentId}) : super(key: key);
 
   @override
   State<MatchLobbyScreen> createState() => _MatchLobbyScreenState();

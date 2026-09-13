@@ -3,8 +3,9 @@ import 'package:app_links/app_links.dart';
 
 class DeepLinkPayload {
   final String? matchId;
+  final String? tournamentId;
 
-  DeepLinkPayload({this.matchId});
+  DeepLinkPayload({this.matchId, this.tournamentId});
 }
 
 class DeepLinkService {
@@ -40,8 +41,9 @@ class DeepLinkService {
     // Formato oficial: gameros-tetris://partida/<id>
     if (uri.scheme == 'gameros-tetris' && uri.host == 'partida') {
       final matchId = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : uri.queryParameters['id'];
+      final tournamentId = uri.queryParameters['tournament_id'] ?? uri.queryParameters['torneo_id'];
       if (matchId != null && matchId.isNotEmpty) {
-        _deepLinkController.add(DeepLinkPayload(matchId: matchId));
+        _deepLinkController.add(DeepLinkPayload(matchId: matchId, tournamentId: tournamentId));
       }
     }
   }

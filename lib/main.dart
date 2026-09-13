@@ -38,7 +38,10 @@ class _TetrisNowAppState extends State<TetrisNowApp> {
       if (payload.matchId != null) {
         navigatorKey.currentState?.push(
           MaterialPageRoute(
-            builder: (_) => MatchLobbyScreen(initialMatchId: payload.matchId),
+            builder: (_) => MatchLobbyScreen(
+              initialMatchId: payload.matchId,
+              tournamentId: payload.tournamentId,
+            ),
           ),
         );
       }
@@ -320,17 +323,17 @@ class _TetrisHomeScreenState extends State<TetrisHomeScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'JUGAR DUELO 1v1',
+                                    'BUSCAR PARTIDA 1v1 RÁPIDA',
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.w900,
-                                      fontSize: 16,
-                                      letterSpacing: 1.2,
+                                      fontSize: 15,
+                                      letterSpacing: 1.1,
                                     ),
                                   ),
                                   SizedBox(height: 3),
                                   Text(
-                                    'Matchmaking competitivo y salas con clave',
+                                    'Matchmaking automático entre clientes de Gameros',
                                     style: TextStyle(color: Color(0xFFE0E7FF), fontSize: 11, fontWeight: FontWeight.w500),
                                   ),
                                 ],

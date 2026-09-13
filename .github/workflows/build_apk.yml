@@ -7,6 +7,9 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build Android APK
@@ -28,28 +31,34 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Get Dependencies
+      # jni/jni_flutter (dependencia transitiva de google_sign_in) necesita
+      # CMake para compilar en el runner; no viene preinstalado.
+      - name: Install CMake
         run: |
-          if [ -f "pubspec.yaml" ]; then
-            flutter pub get
-          elif [ -f "gameros_tetris/pubspec.yaml" ]; then
-            cd gameros_tetris
-            flutter pub get
-          fi
+          echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "cmake;3.22.1"
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Run Tests
+        run: flutter test
 
       - name: Build Debug APK
-        run: |
-          if [ -f "pubspec.yaml" ]; then
-            flutter build apk --debug --android-skip-build-dependency-validation
-          elif [ -f "gameros_tetris/pubspec.yaml" ]; then
-            cd gameros_tetris
-            flutter build apk --debug --android-skip-build-dependency-validation
-          fi
+        run: flutter build apk --debug --android-skip-build-dependency-validation
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: tetris-now-apk
-          path: |
-            build/app/outputs/flutter-apk/*.apk
-            gameros_tetris/build/app/outputs/flutter-apk/*.apk
+          path: build/app/outputs/flutter-apk/*.apk
+
+      # Release fija (tag 'latest-apk') que se actualiza en cada build verde,
+      # para tener siempre un link de descarga estable y sin login.
+      - name: Publish APK to latest-apk release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-apk
+          name: "Última APK (build automática)"
+          prerelease: true
+          files: build/app/outputs/flutter-apk/*.apk
