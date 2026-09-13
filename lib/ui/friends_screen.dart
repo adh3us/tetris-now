@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import '../services/friends_service.dart';
+import '../services/gameros_profile_service.dart';
 import 'create_duel_screen.dart';
 
 class FriendsScreen extends StatefulWidget {
-  const FriendsScreen({Key? key}) : super(key: key);
+  /// Si es true, se muestra sin su propio Scaffold/AppBar (para usarse
+  /// embebido dentro de la pestaña "Amigos" del shell de navegación).
+  final bool embedded;
+
+  const FriendsScreen({Key? key, this.embedded = false}) : super(key: key);
 
   @override
   State<FriendsScreen> createState() => _FriendsScreenState();
@@ -11,12 +16,14 @@ class FriendsScreen extends StatefulWidget {
 
 class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProviderStateMixin {
   final FriendsService _friendsService = FriendsService();
+  final GamerosProfileService _profileService = GamerosProfileService();
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _chatMsgController = TextEditingController();
 
   List<FriendModel> _friends = [];
   List<FriendRequestModel> _requests = [];
+  GamerosUserProfile? _profile;
   bool _isLoading = true;
 
   @override
@@ -24,6 +31,14 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadData();
+    if (widget.embedded) _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final p = await _profileService.getFullProfile();
+      if (p != null && mounted) setState(() => _profile = p);
+    } catch (_) {}
   }
 
   Future<void> _loadData() async {
@@ -61,13 +76,14 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Busca un usuario real por GamerTag, @usuario o Email:', style: TextStyle(color: Color(0xFF8B949E), fontSize: 11.5)),
+            const Text('Ingresá el código de jugador de 6 caracteres de tu amigo (lo encuentra en su perfil de Gameros):', style: TextStyle(color: Color(0xFF8B949E), fontSize: 11.5)),
             const SizedBox(height: 12),
             TextField(
               controller: _searchController,
               style: const TextStyle(color: Colors.white, fontSize: 13),
+              textCapitalization: TextCapitalization.characters,
               decoration: InputDecoration(
-                hintText: 'Ej: Lucas o @Lucas',
+                hintText: 'Ej: A1B2C3',
                 hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
                 filled: true,
                 fillColor: const Color(0xFF0D1117),
@@ -86,7 +102,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                 final ok = await _friendsService.sendFriendRequest(q);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(ok ? '¡Solicitud enviada a "$q"!' : 'Solicitud enviada a "$q"')),
+                    SnackBar(content: Text(ok ? '¡Solicitud enviada!' : 'No se encontró a "$q" o el código es inválido')),
                   );
                   _loadData();
                 }
@@ -196,8 +212,99 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     );
   }
 
+  Widget _buildEloHeader() {
+    if (_profile == null) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161B22),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF4F46E5).withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.account_circle, size: 32, color: Color(0xFF818CF8)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${_profile!.clanTag != null ? '[${_profile!.clanTag}] ' : ''}${_profile!.displayName}',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (_profile!.username != null)
+                  Text(_profile!.username!, style: const TextStyle(color: Color(0xFF818CF8), fontSize: 10.5)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF4F46E5).withOpacity(0.35),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF6366F1)),
+            ),
+            child: Text(
+              'ELO ${_profile!.tetrisElo}',
+              style: const TextStyle(color: Color(0xFFC7D2FE), fontSize: 12, fontWeight: FontWeight.w900),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildTabBar() {
+    return TabBar(
+      controller: _tabController,
+      indicatorColor: const Color(0xFF5865F2),
+      labelColor: Colors.white,
+      tabs: [
+        Tab(text: 'MIS AMIGOS (${_friends.length})'),
+        Tab(text: 'SOLICITUDES (${_requests.length})'),
+      ],
+    );
+  }
+
+  Widget _buildTabView() {
+    return _isLoading
+        ? const Center(child: CircularProgressIndicator(color: Color(0xFF5865F2)))
+        : TabBarView(
+            controller: _tabController,
+            children: [
+              _buildFriendsList(),
+              _buildRequestsList(),
+            ],
+          );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return Column(
+        children: [
+          _buildEloHeader(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+            child: Row(
+              children: [
+                const Expanded(child: Text('AMIGOS Y SOCIAL', style: TextStyle(letterSpacing: 1.2, fontWeight: FontWeight.w900, fontSize: 13, color: Colors.white))),
+                IconButton(
+                  icon: const Icon(Icons.person_add_rounded, color: Color(0xFF5865F2)),
+                  onPressed: _showAddFriendDialog,
+                ),
+              ],
+            ),
+          ),
+          Material(color: const Color(0xFF080A0F), child: _buildTabBar()),
+          Expanded(child: _buildTabView()),
+        ],
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF080A0F),
       appBar: AppBar(
@@ -210,24 +317,9 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
             onPressed: _showAddFriendDialog,
           )
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: const Color(0xFF5865F2),
-          tabs: [
-            Tab(text: 'MIS AMIGOS (${_friends.length})'),
-            Tab(text: 'SOLICITUDES (${_requests.length})'),
-          ],
-        ),
+        bottom: _buildTabBar(),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF5865F2)))
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildFriendsList(),
-                _buildRequestsList(),
-              ],
-            ),
+      body: _buildTabView(),
     );
   }
 

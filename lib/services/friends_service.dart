@@ -84,12 +84,14 @@ class FriendsService {
         int elo = 1000;
 
         try {
+          // Columnas reales de public.usuarios confirmadas por el equipo de
+          // Gameros: 'nombre_display', 'username', 'foto_url'. No hay
+          // columna de "juego actual" — se deja el valor por defecto.
           final uRow = await supabase.from('usuarios').select().eq('id', friendUserId).maybeSingle();
           if (uRow != null) {
-            tag = uRow['nombre'] ?? uRow['gamertag'] ?? tag;
-            username = uRow['username'] ?? uRow['nombre_usuario'];
-            avatar = uRow['foto_url'] ?? uRow['avatar_url'];
-            game = uRow['estado_juego'] ?? uRow['juego_actual'] ?? 'En el Hub de Gameros';
+            tag = uRow['nombre_display'] as String? ?? tag;
+            username = uRow['username'] as String?;
+            avatar = uRow['foto_url'] as String?;
           }
         } catch (_) {}
 
@@ -135,8 +137,8 @@ class FriendsService {
         try {
           final uRow = await supabase.from('usuarios').select().eq('id', senderId).maybeSingle();
           if (uRow != null) {
-            tag = uRow['nombre'] ?? uRow['gamertag'] ?? tag;
-            avatar = uRow['foto_url'] ?? uRow['avatar_url'];
+            tag = uRow['nombre_display'] as String? ?? tag;
+            avatar = uRow['foto_url'] as String?;
           }
         } catch (_) {}
 
@@ -154,25 +156,16 @@ class FriendsService {
     }
   }
 
+  /// [query] es el código de jugador de 6 caracteres (usuarios.codigo_jugador)
+  /// o el UUID directo. El RPC real (enviar_solicitud_amistad) ya resuelve
+  /// ambos casos y auto-acepta si el otro ya te había mandado una solicitud.
   Future<bool> sendFriendRequest(String query) async {
     final user = supabase.auth.currentUser;
     if (user == null) return false;
 
     try {
-      final targetUser = await supabase
-          .from('usuarios')
-          .select('id')
-          .or('gamertag.ilike.%$query%,nombre.ilike.%$query%,email.ilike.%$query%,username.ilike.%$query%')
-          .maybeSingle();
-
-      if (targetUser == null) return false;
-      final targetId = targetUser['id'] as String;
-      if (targetId == user.id) return false;
-
-      await supabase.from('amigos').upsert({
-        'solicitante_id': user.id,
-        'receptor_id': targetId,
-        'estado': 'pendiente',
+      await supabase.rpc('enviar_solicitud_amistad', params: {
+        'p_codigo_o_id': query.trim(),
       });
       return true;
     } catch (_) {
@@ -182,10 +175,18 @@ class FriendsService {
 
   Future<void> respondToRequest(String requestId, bool accept) async {
     try {
-      await supabase.from('amigos').update({
-        'estado': accept ? 'aceptada' : 'rechazada',
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', requestId);
+      await supabase.rpc('responder_solicitud_amistad', params: {
+        'p_solicitud_id': requestId,
+        'p_aceptar': accept,
+      });
+    } catch (_) {}
+  }
+
+  Future<void> removeFriend(String otherUserId) async {
+    try {
+      await supabase.rpc('eliminar_amistad', params: {
+        'p_otro_usuario_id': otherUserId,
+      });
     } catch (_) {}
   }
 
