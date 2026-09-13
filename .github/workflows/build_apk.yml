@@ -52,13 +52,28 @@ jobs:
           name: tetris-now-apk
           path: build/app/outputs/flutter-apk/*.apk
 
-      # Release fija (tag 'latest-apk') que se actualiza en cada build verde,
-      # para tener siempre un link de descarga estable y sin login.
+      # Se borra la release anterior (si existe) antes de recrearla: GitHub
+      # no actualiza la fecha de publicación cuando solo se reemplaza el
+      # archivo adjunto, así que sin este paso la app siempre muestra la
+      # fecha de la primera vez que se creó "latest-apk".
+      - name: Delete previous latest-apk release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete latest-apk --repo ${{ github.repository }} --yes --cleanup-tag
+
+      # Release fija (tag 'latest-apk') que se recrea en cada build verde,
+      # para tener siempre un link de descarga estable, sin login, y con la
+      # fecha de publicación al día.
       - name: Publish APK to latest-apk release
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-apk
           name: "Última APK (build automática)"
+          body: |
+            APK de debug compilado automáticamente desde `${{ github.ref_name }}` (commit ${{ github.sha }}).
+            Esta release se borra y se vuelve a crear en cada build verde, así que la fecha de "lanzó esto..." de arriba siempre es la del último build, no una vieja.
           prerelease: true
           files: build/app/outputs/flutter-apk/*.apk
