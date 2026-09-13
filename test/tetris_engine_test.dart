@@ -133,10 +133,11 @@ void main() {
       expect(engine.isShieldActive, true);
       expect(engine.defenseEnergy, 0);
 
-      final lastRow = engine.rows - 1;
-      final initialGridState = engine.grid[lastRow].every((c) => c == null);
+      // receiveGarbage encola las líneas en pendingGarbageLines (se vuelcan
+      // al grid recién al bloquear la pieza actual); con escudo activo no
+      // debe ni siquiera encolarlas.
       engine.receiveGarbage(4);
-      expect(engine.grid[lastRow].every((c) => c == null), initialGridState);
+      expect(engine.pendingGarbageLines, 0);
 
       for (int i = 0; i < 25; i++) {
         engine.updateShieldTimer();
@@ -149,10 +150,7 @@ void main() {
       expect(engine.isShieldActive, false);
 
       engine.receiveGarbage(2);
-      final lastRow = engine.rows - 1;
-      final lastRowHasGarbage =
-          engine.grid[lastRow].any((c) => c?.type == TetrominoType.GARBAGE);
-      expect(lastRowHasGarbage, true);
+      expect(engine.pendingGarbageLines, 2);
     });
   });
 
