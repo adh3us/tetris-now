@@ -8,6 +8,7 @@ class TournamentModel {
   final String nombre;
   final String tipo; // 'individual' | 'equipo'
   final String estado; // 'inscripcion' | 'en_curso' | 'finalizado' | 'cancelado'
+  final int? tamanoEquipo;
   final DateTime? createdAt;
 
   TournamentModel({
@@ -15,6 +16,7 @@ class TournamentModel {
     required this.nombre,
     required this.tipo,
     required this.estado,
+    this.tamanoEquipo,
     this.createdAt,
   });
 
@@ -26,6 +28,7 @@ class TournamentModel {
       // ('individual' | 'equipo'), no 'tipo'.
       tipo: map['formato'] as String? ?? 'individual',
       estado: map['estado'] as String? ?? 'inscripcion',
+      tamanoEquipo: map['tamano_equipo'] as int?,
       createdAt: DateTime.tryParse(map['fecha_inicio']?.toString() ?? ''),
     );
   }
@@ -97,7 +100,7 @@ class TournamentService {
 
     final res = await supabase
         .from('torneos')
-        .select('id, nombre, juego, juego_id, formato, estado, fecha_inicio')
+        .select('id, nombre, juego, juego_id, formato, estado, fecha_inicio, tamano_equipo')
         .eq('juego_id', gameId)
         .inFilter('estado', ['inscripcion', 'en_curso'])
         .order('fecha_inicio', ascending: false);
@@ -145,6 +148,50 @@ class TournamentService {
     } catch (_) {
       return false;
     }
+  }
+
+  /// Inscripción de equipo (clan). El líder o co-líder inscribe a su clan
+  /// pasando el tamaño de equipo requerido por el torneo si corresponde.
+  Future<Map<String, dynamic>> inscribirseEquipo({
+    required String tournamentId,
+    required String clanId,
+    int? tamanoEquipo,
+  }) async {
+    try {
+      final res = await supabase.rpc('inscribirse_torneo', params: {
+        'p_torneo_id': tournamentId,
+        'p_clan_id': clanId,
+        if (tamanoEquipo != null) 'p_tamano_equipo': tamanoEquipo,
+      });
+      return {'success': true, 'data': res};
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// Consulta si el usuario actual es líder o co-líder activo de algún clan.
+  Future<Map<String, dynamic>?> getClanLiderazgo() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return null;
+    try {
+      final row = await supabase
+          .from('miembros_clan')
+          .select('clan_id, rol, clanes(nombre)')
+          .eq('usuario_id', user.id)
+          .eq('estado', 'activo')
+          .inFilter('rol', ['lider', 'co_lider'])
+          .maybeSingle();
+
+      if (row != null && row['clanes'] != null) {
+        final clan = row['clanes'] as Map;
+        return {
+          'clan_id': row['clan_id'] as String,
+          'rol': row['rol'] as String,
+          'clan_nombre': clan['nombre'] as String? ?? 'Mi Clan',
+        };
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<bool> cancelarInscripcion(String tournamentId) async {

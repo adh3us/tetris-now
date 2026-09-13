@@ -147,6 +147,7 @@ class _MatchLobbyScreenState extends State<MatchLobbyScreen> {
           matchId: _matchId,
           myTeamId: _myTeamId,
           opponentTeamId: _opponentTeamId,
+          tournamentId: widget.tournamentId,
           realtimeService: _realtimeService,
           mode: GameMode.duel1v1,
         ),

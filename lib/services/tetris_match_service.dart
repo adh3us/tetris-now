@@ -17,6 +17,7 @@ class TetrisMatchModel {
   final bool isPrivate;
   final bool allowSpectators;
   final String? tournamentId;
+  final String? torneoPartidaId;
   final int roundNumber;
   final String format; // '1v1'
   final String status; // 'pending', 'ready_check', 'in_progress', 'finished'
@@ -37,6 +38,7 @@ class TetrisMatchModel {
     this.isPrivate = false,
     this.allowSpectators = true,
     this.tournamentId,
+    this.torneoPartidaId,
     this.roundNumber = 1,
     required this.format,
     required this.status,
@@ -62,6 +64,7 @@ class TetrisMatchModel {
       isPrivate: map['is_private'] as bool? ?? false,
       allowSpectators: map['allow_spectators'] as bool? ?? true,
       tournamentId: map['tournament_id'] as String?,
+      torneoPartidaId: map['torneo_partida_id'] as String? ?? map['tournament_id'] as String?,
       roundNumber: map['round_number'] as int? ?? 1,
       format: map['format'] as String? ?? '1v1',
       status: map['status'] as String? ?? 'pending',
@@ -385,25 +388,63 @@ class TetrisMatchService {
   }
 
 
-  /// Reporte automático directo para Torneos Gameros (Decisión de Lucas)
+  /// Reporte automático directo para Torneos Gameros (Contrato oficial Gameros ↔ Tetris Now)
   /// Dispara el RPC 'reportar_resultado_cruce_torneo' para avanzar el bracket,
-  /// actualizar posiciones y notificar en Discord sin requerir doble confirmación.
+  /// actualizar posiciones y notificar en Gameros sin requerir doble confirmación.
   Future<Map<String, dynamic>> reportarResultadoCruceTorneo({
+    required String partidaId, // ID de public.partidas (el cruce del bracket de Gameros)
+    String? ganadorInscripcionId, // ID de inscripciones_torneo (o se resuelve dinámicamente)
+    bool empate = false,
     required String matchId,
-    required String winnerTeamId,
-    String? tournamentId,
-    Map<String, dynamic>? payload,
+    Map<String, dynamic>? metadata,
   }) async {
     try {
+      String? inscripcionGanadora = ganadorInscripcionId;
+
+      // Si no se pasó explícitamente la inscripción ganadora y no es empate,
+      // intentamos resolverla desde public.partidas e inscripciones_torneo.
+      if (!empate && (inscripcionGanadora == null || inscripcionGanadora.isEmpty)) {
+        try {
+          final partidaRow = await supabase
+              .from('partidas')
+              .select('inscripcion_a_id, inscripcion_b_id')
+              .eq('id', partidaId)
+              .maybeSingle();
+
+          if (partidaRow != null) {
+            final inscA = partidaRow['inscripcion_a_id'] as String?;
+            final inscB = partidaRow['inscripcion_b_id'] as String?;
+            final currentUserId = supabase.auth.currentUser?.id;
+
+            if (inscA != null && currentUserId != null) {
+              final inscRow = await supabase
+                  .from('inscripciones_torneo')
+                  .select('id, usuario_id')
+                  .eq('id', inscA)
+                  .maybeSingle();
+
+              if (inscRow != null && inscRow['usuario_id'] == currentUserId) {
+                inscripcionGanadora = inscA;
+              } else if (inscB != null) {
+                inscripcionGanadora = inscB;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
       final res = await supabase.rpc('reportar_resultado_cruce_torneo', params: {
-        'p_match_id': matchId,
-        'p_winner_team_id': winnerTeamId,
-        if (tournamentId != null) 'p_tournament_id': tournamentId,
-        'p_payload': payload ?? {
+        'p_partida_id': partidaId,
+        'p_ganador_inscripcion_id': empate ? null : inscripcionGanadora,
+        'p_empate': empate,
+        'p_metadata': {
           'juego': 'Tetris Now',
+          'tetris_match_id': matchId,
           'fecha': DateTime.now().toIso8601String(),
+          if (metadata != null) ...metadata,
         },
       });
+
       if (res != null && res is Map) {
         return Map<String, dynamic>.from(res);
       }
@@ -411,8 +452,8 @@ class TetrisMatchService {
     } catch (_) {
       return await reportMatchResult(
         matchId: matchId,
-        winnerTeamId: winnerTeamId,
-        payload: payload,
+        winnerTeamId: ganadorInscripcionId ?? 'winner',
+        payload: metadata,
       );
     }
   }

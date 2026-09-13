@@ -16,6 +16,7 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
   List<TournamentModel> _individuales = [];
   List<TournamentModel> _equipos = [];
   List<TournamentInvitationModel> _invitaciones = [];
+  Map<String, dynamic>? _clanLiderazgo;
   bool _isLoading = true;
   String? _error;
 
@@ -31,11 +32,13 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
     try {
       final all = await _service.getTournaments();
       final invites = await _service.getMyInvitations();
+      final clan = await _service.getClanLiderazgo();
       if (!mounted) return;
       setState(() {
         _individuales = all.where((t) => t.tipo == 'individual').toList();
         _equipos = all.where((t) => t.tipo == 'equipo').toList();
         _invitaciones = invites;
+        _clanLiderazgo = clan;
         _isLoading = false;
       });
     } catch (e) {
@@ -51,6 +54,27 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
       SnackBar(content: Text(ok
           ? '¡Inscripción enviada a "${t.nombre}"!'
           : 'No se pudo inscribir (¿ya llegaste al límite de 2 torneos activos?)')),
+    );
+    _loadData();
+  }
+
+  Future<void> _inscribirEquipo(TournamentModel t) async {
+    if (_clanLiderazgo == null) return;
+    final clanId = _clanLiderazgo!['clan_id'] as String;
+    final clanNombre = _clanLiderazgo!['clan_nombre'] as String;
+    final res = await _service.inscribirseEquipo(
+      tournamentId: t.id,
+      clanId: clanId,
+      tamanoEquipo: t.tamanoEquipo,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(res['success'] == true
+            ? '¡Equipo "$clanNombre" inscrito con éxito en "${t.nombre}"!'
+            : 'No se pudo inscribir al equipo: ${res['error'] ?? 'Error desconocido'}'),
+        backgroundColor: res['success'] == true ? const Color(0xFF00D26A) : const Color(0xFFDA3633),
+      ),
     );
     _loadData();
   }
@@ -229,10 +253,15 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
                     style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5865F2)),
                     child: const Text('INSCRIBIRME', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                   )
+                else if (_clanLiderazgo != null)
+                  ElevatedButton(
+                    onPressed: () => _inscribirEquipo(t),
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1)),
+                    child: Text('INSCRIBIR (${_clanLiderazgo!['clan_nombre']})',
+                        style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold)),
+                  )
                 else
-                  // La inscripción de equipo la hace el líder/co-líder desde
-                  // el clan (mismo flujo que en Gameros); acá solo se avisa.
-                  const Text('Solo el líder/co-líder\npuede inscribir al equipo',
+                  const Text('Solo el líder/co-líder\nde un clan puede inscribir',
                       textAlign: TextAlign.right,
                       style: TextStyle(color: Color(0xFF8B949E), fontSize: 9.5)),
               ],

@@ -67,6 +67,9 @@ class TetrisGameScreen extends StatefulWidget {
   final String? myTeamId;
   final String? opponentTeamId;
   final String? tournamentId;
+  final String? torneoPartidaId;
+  final String? myInscripcionId;
+  final String? opponentInscripcionId;
   final TetrisRealtimeService? realtimeService;
   final GameMode mode;
 
@@ -76,6 +79,9 @@ class TetrisGameScreen extends StatefulWidget {
     this.myTeamId,
     this.opponentTeamId,
     this.tournamentId,
+    this.torneoPartidaId,
+    this.myInscripcionId,
+    this.opponentInscripcionId,
     this.realtimeService,
     this.mode = GameMode.solo,
   }) : super(key: key);
@@ -474,11 +480,12 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
         if (!mounted) return;
         final isVictory = winnerTeamId == widget.myTeamId;
         if (isVictory && widget.matchId != null) {
-          if (widget.tournamentId != null) {
+          final cruceId = widget.torneoPartidaId ?? widget.tournamentId;
+          if (cruceId != null && cruceId.isNotEmpty) {
             _matchService.reportarResultadoCruceTorneo(
+              partidaId: cruceId,
+              ganadorInscripcionId: widget.myInscripcionId,
               matchId: widget.matchId!,
-              winnerTeamId: widget.myTeamId ?? winnerTeamId,
-              tournamentId: widget.tournamentId,
             );
           } else {
             _matchService.reportMatchResult(
@@ -905,11 +912,12 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       widget.realtimeService?.sendKnockout();
       widget.realtimeService?.sendMatchEnd(widget.opponentTeamId!);
 
-      if (widget.tournamentId != null) {
+      final cruceId = widget.torneoPartidaId ?? widget.tournamentId;
+      if (cruceId != null && cruceId.isNotEmpty) {
         _matchService.reportarResultadoCruceTorneo(
+          partidaId: cruceId,
+          ganadorInscripcionId: widget.opponentInscripcionId,
           matchId: widget.matchId!,
-          winnerTeamId: widget.opponentTeamId!,
-          tournamentId: widget.tournamentId,
         );
       } else {
         _matchService.reportMatchResult(
