@@ -240,12 +240,17 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
                   ),
                 ),
                 if (t.estado == 'en_curso')
-                  ElevatedButton(
+                  ElevatedButton.icon(
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => TournamentBracketsScreen(tournamentId: t.id)),
                     ),
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF334155)),
-                    child: const Text('VER BRACKET', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                    icon: const Icon(Icons.account_tree_rounded, size: 14),
+                    label: const Text('VER BRACKET', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1E293B),
+                      foregroundColor: const Color(0xFF38BDF8),
+                      side: const BorderSide(color: Color(0xFF0284C7)),
+                    ),
                   )
                 else if (t.tipo == 'individual')
                   ElevatedButton(

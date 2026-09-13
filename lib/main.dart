@@ -5,6 +5,7 @@ import 'core/supabase_config.dart';
 import 'services/deep_link_service.dart';
 import 'ui/home_shell.dart';
 import 'ui/match_lobby_screen.dart';
+import 'ui/tournament_brackets_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -31,7 +32,15 @@ class _TetrisNowAppState extends State<TetrisNowApp> {
   void initState() {
     super.initState();
     DeepLinkService().onDeepLink.listen((payload) {
-      if (payload.matchId != null) {
+      if (payload.tournamentId != null && payload.tournamentId!.isNotEmpty) {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => TournamentBracketsScreen(
+              tournamentId: payload.tournamentId!,
+            ),
+          ),
+        );
+      } else if (payload.matchId != null) {
         navigatorKey.currentState?.push(
           MaterialPageRoute(
             builder: (_) => MatchLobbyScreen(
