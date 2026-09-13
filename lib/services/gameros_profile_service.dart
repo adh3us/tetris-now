@@ -15,6 +15,7 @@ class GamerosUserProfile {
   final int tetrisLosses;
   final String? clanName;
   final String? clanTag;
+  final String? codigoJugador;
 
   GamerosUserProfile({
     required this.id,
@@ -30,6 +31,7 @@ class GamerosUserProfile {
     this.tetrisLosses = 0,
     this.clanName,
     this.clanTag,
+    this.codigoJugador,
   });
 }
 
@@ -54,6 +56,7 @@ class GamerosProfileService {
     int reputacion = 100;
     String? clanName;
     String? clanTag;
+    String? codigoJugador;
 
     // 1. Consultar tabla 'usuarios' en public (Gameros Core)
     try {
@@ -66,12 +69,14 @@ class GamerosProfileService {
       if (userRow != null) {
         // Columnas reales confirmadas por el equipo de Gameros (13/09/2026):
         // 'nombre_display' (no 'nombre'/'nombre_completo'/'display_name'/'gamertag'),
-        // 'username', 'foto_url'. 'nivel'/'reputacion' no existen como
-        // columnas reales en public.usuarios — se dejan en su valor por
-        // defecto, no se muestran como si vinieran de Gameros.
+        // 'username', 'foto_url', 'codigo_jugador' (código único de 6
+        // caracteres para agregar amigos). 'nivel'/'reputacion' no existen
+        // como columnas reales en public.usuarios — se dejan en su valor
+        // por defecto, no se muestran como si vinieran de Gameros.
         displayName = userRow['nombre_display'] ?? displayName;
         username = userRow['username'] ?? username;
         avatarUrl = userRow['foto_url'] ?? avatarUrl;
+        codigoJugador = userRow['codigo_jugador'] as String?;
       }
     } catch (_) {}
 
@@ -130,6 +135,7 @@ class GamerosProfileService {
       tetrisLosses: losses,
       clanName: clanName,
       clanTag: clanTag,
+      codigoJugador: codigoJugador,
     );
   }
 }

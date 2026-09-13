@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import '../services/friends_service.dart';
 import '../services/desafio_service.dart';
 import '../services/gameros_profile_service.dart';
+import '../services/tetris_match_service.dart';
+import '../services/tetris_realtime_service.dart';
 import '../core/supabase_config.dart';
-import 'match_lobby_screen.dart';
+import '../game/tetris_types.dart';
+import 'tetris_game_screen.dart';
 
 class FriendsScreen extends StatefulWidget {
   /// Si es true, se muestra sin su propio Scaffold/AppBar (para usarse
@@ -21,6 +24,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   final FriendsService _friendsService = FriendsService();
   final DesafioService _desafioService = DesafioService();
   final GamerosProfileService _profileService = GamerosProfileService();
+  final TetrisMatchService _matchService = TetrisMatchService();
   late TabController _tabController;
 
   List<FriendModel> _friends = [];
@@ -29,6 +33,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   GamerosUserProfile? _profile;
   bool _isLoading = true;
   Timer? _desafiosPollTimer;
+  Timer? _esperandoRivalTimer;
 
   @override
   void initState() {
@@ -42,6 +47,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   @override
   void dispose() {
     _desafiosPollTimer?.cancel();
+    _esperandoRivalTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -81,17 +87,56 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     final gamerTag = _profile?.displayName ?? 'Gamer';
     final res = await _desafioService.crearDesafio(friend.userId, gamerTag);
     if (!mounted) return;
-    if (res != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('¡Desafío enviado a ${friend.gamerTag}! Tiene 20 segundos para aceptar.')),
-      );
-      _tabController.animateTo(2);
-      _loadDesafios();
-    } else {
+    if (res == null || res['match_id'] == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No se pudo enviar el desafío')),
       );
+      return;
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('¡Desafío enviado a ${friend.gamerTag}! Tiene 20 segundos para aceptar.')),
+    );
+
+    final matchId = res['match_id'] as String;
+    final myTeamId = res['team_id'] as String;
+    _esperarRivalYEntrar(matchId, myTeamId);
+  }
+
+  /// El retador espera a que el retado acepte (o expire), sondeando el
+  /// estado real del match — igual que hace CreateDuelScreen con el
+  /// matchmaking automático. No usa MatchLobbyScreen porque esa pantalla
+  /// siempre te trata como invitado (team_2), y acá el retador ya es team_1.
+  void _esperarRivalYEntrar(String matchId, String myTeamId) {
+    _esperandoRivalTimer?.cancel();
+    _esperandoRivalTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      final estado = await _matchService.consultarEstadoMatch(matchId, myTeamId);
+      if (estado['status'] == 'matched') {
+        timer.cancel();
+        await _entrarAPartida(matchId, myTeamId);
+      }
+    });
+  }
+
+  Future<void> _entrarAPartida(String matchId, String myTeamId) async {
+    if (!mounted) return;
+    final match = await _matchService.getMatch(matchId);
+    final opponentTeamId = myTeamId == match.team1Id ? match.team2Id : match.team1Id;
+    final userId = SupabaseConfig.client.auth.currentUser?.id ?? 'guest_player';
+
+    final realtime = TetrisRealtimeService(
+      matchId: matchId,
+      myTeamId: myTeamId,
+      opponentTeamId: opponentTeamId,
+      currentUserId: userId,
+    );
+
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TetrisGameScreen(mode: GameMode.duel1v1, matchId: matchId, realtimeService: realtime),
+      ),
+    );
   }
 
   Future<void> _responderDesafio(DesafioModel d, bool aceptar) async {
@@ -99,9 +144,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     final res = await _desafioService.responderDesafio(d.id, aceptar, gamerTag: gamerTag);
     if (!mounted) return;
     if (res != null && aceptar && res['match_id'] != null) {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => MatchLobbyScreen(initialMatchId: res['match_id'] as String)),
-      );
+      await _entrarAPartida(res['match_id'] as String, res['team_id'] as String);
     }
     _loadDesafios();
   }
@@ -180,6 +223,8 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                 ),
                 if (_profile!.username != null)
                   Text(_profile!.username!, style: const TextStyle(color: Color(0xFF818CF8), fontSize: 10.5)),
+                if (_profile!.codigoJugador != null)
+                  Text('#${_profile!.codigoJugador}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
               ],
             ),
           ),
@@ -523,12 +568,20 @@ class _AddFriendDialogState extends State<_AddFriendDialog> {
 
   Future<void> _sendTo(String targetId, String label) async {
     Navigator.of(context).pop();
-    final ok = await widget.friendsService.sendFriendRequest(targetId);
-    widget.onSent();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ok ? '¡Solicitud enviada a $label!' : 'No se pudo enviar la solicitud')),
-    );
+    try {
+      await widget.friendsService.sendFriendRequest(targetId);
+      widget.onSent();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('¡Solicitud enviada a $label!')),
+      );
+    } catch (e) {
+      widget.onSent();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al enviar: $e'), backgroundColor: const Color(0xFF3A1414)),
+      );
+    }
   }
 
   @override

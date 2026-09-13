@@ -22,9 +22,11 @@ class TournamentModel {
     return TournamentModel(
       id: map['id'] as String,
       nombre: map['nombre'] as String? ?? 'Torneo Tetris Now',
-      tipo: map['tipo'] as String? ?? map['formato'] as String? ?? 'individual',
+      // Columna real confirmada en lib/torneos.dart de Gameros: 'formato'
+      // ('individual' | 'equipo'), no 'tipo'.
+      tipo: map['formato'] as String? ?? 'individual',
       estado: map['estado'] as String? ?? 'inscripcion',
-      createdAt: DateTime.tryParse(map['created_at']?.toString() ?? ''),
+      createdAt: DateTime.tryParse(map['fecha_inicio']?.toString() ?? ''),
     );
   }
 }
@@ -95,10 +97,10 @@ class TournamentService {
 
     final res = await supabase
         .from('torneos')
-        .select()
+        .select('id, nombre, juego, juego_id, formato, estado, fecha_inicio')
         .eq('juego_id', gameId)
         .inFilter('estado', ['inscripcion', 'en_curso'])
-        .order('created_at', ascending: false);
+        .order('fecha_inicio', ascending: false);
 
     return (res as List)
         .map((e) => TournamentModel.fromMap(Map<String, dynamic>.from(e)))

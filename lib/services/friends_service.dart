@@ -169,18 +169,15 @@ class FriendsService {
   /// [target] es el id de usuario (de un resultado de búsqueda) o el código
   /// de jugador de 6 caracteres. El RPC real ya resuelve ambos casos y
   /// auto-acepta si el otro ya te había mandado una solicitud.
-  Future<bool> sendFriendRequest(String target) async {
+  /// Lanza la excepción real en vez de tragarla, para poder diagnosticar por
+  /// qué una solicitud "enviada" no le llega al destinatario.
+  Future<void> sendFriendRequest(String target) async {
     final user = supabase.auth.currentUser;
-    if (user == null) return false;
+    if (user == null) throw Exception('No hay sesión activa');
 
-    try {
-      await supabase.rpc('enviar_solicitud_amistad', params: {
-        'p_codigo_o_id': target.trim(),
-      });
-      return true;
-    } catch (_) {
-      return false;
-    }
+    await supabase.rpc('enviar_solicitud_amistad', params: {
+      'p_codigo_o_id': target.trim(),
+    });
   }
 
   Future<void> respondToRequest(String requestId, bool accept) async {
