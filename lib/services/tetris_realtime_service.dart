@@ -13,6 +13,8 @@ class TetrisRealtimeService {
   Function(String userId, String teamId)? onPlayerReady;
   Function()? onMatchStart;
   Function(int lines, CubeType tier, int damageHp, int diamondLines, int opponentHp)? onIncomingAttack;
+  Function(int tier, int duration)? onSpecialAttack;
+  Function(List<List<int>> miniGrid, int stackHeight, int opponentHp)? onOpponentBoardSync;
   Function(String userId, String teamId)? onPlayerKnockout;
   Function(String winnerTeamId)? onMatchEnd;
   Function(bool isOpponentConnected)? onOpponentConnectionChanged;
@@ -34,6 +36,8 @@ class TetrisRealtimeService {
     this.onPlayerReady,
     this.onMatchStart,
     this.onIncomingAttack,
+    this.onSpecialAttack,
+    this.onOpponentBoardSync,
     this.onPlayerKnockout,
     this.onMatchEnd,
     this.onOpponentConnectionChanged,
@@ -174,6 +178,37 @@ class TetrisRealtimeService {
     );
 
     _channel.onBroadcast(
+      event: 'special_attack',
+      callback: (payload) {
+        final senderTeamId = payload['sender_team_id'] as String?;
+        if (senderTeamId != myTeamId) {
+          final tier = payload['attack_tier'] as int? ?? 1;
+          final duration = payload['duration'] as int? ?? 20;
+          onSpecialAttack?.call(tier, duration);
+        }
+      },
+    );
+
+    _channel.onBroadcast(
+      event: 'board_sync',
+      callback: (payload) {
+        final senderTeamId = payload['sender_team_id'] as String?;
+        if (senderTeamId != myTeamId) {
+          final stackHeight = payload['stack_height'] as int? ?? 0;
+          final hp = payload['hp'] as int? ?? 100;
+          final dynamic rawMatrix = payload['matrix'];
+          List<List<int>> matrix = [];
+          if (rawMatrix is List) {
+            try {
+              matrix = rawMatrix.map((r) => (r as List).map((c) => (c as num).toInt()).toList()).toList();
+            } catch (_) {}
+          }
+          onOpponentBoardSync?.call(matrix, stackHeight, hp);
+        }
+      },
+    );
+
+    _channel.onBroadcast(
       event: 'player_knockout',
       callback: (payload) {
         final userId = payload['user_id'] as String;
@@ -279,6 +314,29 @@ class TetrisRealtimeService {
       payload: {
         'user_id': currentUserId,
         'team_id': myTeamId,
+      },
+    );
+  }
+
+  Future<void> sendSpecialAttack(int tier, {int duration = 20}) async {
+    await _channel.sendBroadcastMessage(
+      event: 'special_attack',
+      payload: {
+        'sender_team_id': myTeamId,
+        'attack_tier': tier,
+        'duration': duration,
+      },
+    );
+  }
+
+  Future<void> sendBoardSync(List<List<int>> matrix, int stackHeight, int hp) async {
+    await _channel.sendBroadcastMessage(
+      event: 'board_sync',
+      payload: {
+        'sender_team_id': myTeamId,
+        'matrix': matrix,
+        'stack_height': stackHeight,
+        'hp': hp,
       },
     );
   }

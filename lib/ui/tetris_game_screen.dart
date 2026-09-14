@@ -325,6 +325,11 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
   double _dragStartX = 0;
   double _dragStartY = 0;
 
+  bool _isMatchEnded = false;
+  List<List<int>> _opponentGrid = [];
+  int _opponentStackHeight = 0;
+  double _boardSyncCooldown = 0.0;
+
   @override
   void initState() {
     super.initState();
@@ -401,6 +406,21 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
         }
       }
 
+      if (_isMatchEnded) return;
+
+      // Sincronización periódica del minimapa del rival (3 veces por segundo)
+      _boardSyncCooldown -= dt;
+      if (_boardSyncCooldown <= 0.0) {
+        _boardSyncCooldown = 0.35;
+        if (widget.realtimeService != null && (widget.mode == GameMode.duel1v1 || widget.mode == GameMode.tournament)) {
+          widget.realtimeService!.sendBoardSync(
+            _engine.getCompactVisibleMatrix(),
+            _engine.getStackHeight(),
+            _engine.currentHp,
+          );
+        }
+      }
+
       final res = _engine.update(dt);
       if (res != null) {
         _processAttackResult(res);
@@ -424,7 +444,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
     if (widget.realtimeService != null) {
       widget.realtimeService!.connect(); // Conectar canal WebSocket de Realtime
       widget.realtimeService!.onIncomingAttack = (lines, tier, damageHp, diamondLines, opponentHp) {
-        if (!mounted) return;
+        if (!mounted || _isMatchEnded) return;
         setState(() {
           _opponentHp = opponentHp;
 
@@ -469,6 +489,76 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
         });
       };
 
+      // Recepción de ataques especiales (4 barras)
+      widget.realtimeService!.onSpecialAttack = (tier, duration) {
+        if (!mounted || _isMatchEnded) return;
+        setState(() {
+          if (_engine.isShieldActive) {
+            _combatLog = '⚡ ¡ESCUDO ACTIVO! Ataque especial bloqueado.';
+            _triggerImpactBanner('¡ESCUDO BLOQUEÓ!', sub: 'ATAQUE ESPECIAL NEUTRALIZADO', color: const Color(0xFF00D26A));
+            _audioService.play(TetrisSfx.shieldActivate);
+            return;
+          }
+
+          if (tier == 1) {
+            _engine.invertedRotationTimer = duration.toDouble();
+            _audioService.play(TetrisSfx.damageReceived);
+            _triggerScreenShake(intensity: 5.5, duration: 0.22);
+            _triggerImpactBanner('⚠️ ¡GIRO INVERTIDO!', sub: 'Controles invertidos (${duration}s)', color: const Color(0xFFFB923C));
+            _combatLog = '⚠️ ¡Rival activó Giro Invertido (${duration}s)!';
+          } else if (tier == 2) {
+            _engine.invisibleFlickerTimer = duration.toDouble();
+            _audioService.play(TetrisSfx.damageReceived);
+            _triggerScreenShake(intensity: 5.5, duration: 0.22);
+            _triggerImpactBanner('👻 ¡FICHAS INVISIBLES!', sub: 'Piezas titilando (${duration}s)', color: const Color(0xFFC084FC));
+            _combatLog = '👻 ¡Rival volvió tus fichas invisibles (${duration}s)!';
+          } else if (tier == 3) {
+            _engine.speedMultiplierTimer = duration.toDouble();
+            _audioService.play(TetrisSfx.damageReceived);
+            _triggerScreenShake(intensity: 7.0, duration: 0.25);
+            _triggerImpactBanner('⚡ ¡VELOCIDAD x4!', sub: 'Caída acelerada (${duration}s)', color: const Color(0xFF38BDF8));
+            _combatLog = '⚡ ¡Rival aceleró tu caída a x4 (${duration}s)!';
+          } else if (tier == 4) {
+            _engine.receiveStarShower(10);
+            _audioService.play(TetrisSfx.damageReceived);
+            _triggerScreenShake(intensity: 9.0, duration: 0.35);
+            _triggerImpactBanner('⭐ ¡LLUVIA DE ESTRELLAS! ⭐', sub: '10 estrellas fijas en tu pantalla', color: const Color(0xFFFBBF24));
+            _combatLog = '⭐ ¡Lluvia de estrellas del rival! Elimínalas con líneas.';
+          }
+        });
+      };
+
+      // Recepción en vivo del minimapa del rival
+      widget.realtimeService!.onOpponentBoardSync = (matrix, stackHeight, hp) {
+        if (!mounted || _isMatchEnded) return;
+        setState(() {
+          _opponentGrid = matrix;
+          _opponentStackHeight = stackHeight;
+          _opponentHp = hp;
+        });
+      };
+
+      widget.realtimeService!.onPlayerKnockout = (userId, teamId) {
+        if (!mounted || _isMatchEnded) return;
+        final isVictory = teamId != widget.myTeamId;
+        if (isVictory && widget.matchId != null) {
+          final cruceId = widget.torneoPartidaId ?? widget.tournamentId;
+          if (cruceId != null && cruceId.isNotEmpty) {
+            _matchService.reportarResultadoCruceTorneo(
+              partidaId: cruceId,
+              ganadorInscripcionId: widget.myInscripcionId,
+              matchId: widget.matchId!,
+            );
+          } else {
+            _matchService.reportMatchResult(
+              matchId: widget.matchId!,
+              winnerTeamId: widget.myTeamId ?? '',
+            );
+          }
+        }
+        _terminateMatch(isWinner: isVictory);
+      };
+
       widget.realtimeService!.onOpponentConnectionChanged = (isConnected) {
         if (!mounted) return;
         setState(() {
@@ -477,7 +567,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       };
 
       widget.realtimeService!.onMatchEnd = (winnerTeamId) {
-        if (!mounted) return;
+        if (!mounted || _isMatchEnded) return;
         final isVictory = winnerTeamId == widget.myTeamId;
         if (isVictory && widget.matchId != null) {
           final cruceId = widget.torneoPartidaId ?? widget.tournamentId;
@@ -494,7 +584,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
             );
           }
         }
-        _showEndDialog(isVictory ? '¡VICTORIA!' : 'DERROTA');
+        _terminateMatch(isWinner: isVictory);
       };
 
       widget.realtimeService!.onOpponentTimeout = (opponentUserId) {
@@ -858,6 +948,12 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       } else {
         _combatLog = 'Enviaste +${res.linesSent} líneas al rival.';
       }
+    if (widget.realtimeService != null && (widget.mode == GameMode.duel1v1 || widget.mode == GameMode.tournament)) {
+      widget.realtimeService!.sendBoardSync(
+        _engine.getCompactVisibleMatrix(),
+        _engine.getStackHeight(),
+        _engine.currentHp,
+      );
     }
   }
 
@@ -887,25 +983,86 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
     }
   }
 
-  
+  /// Ejecuta el ataque especial correspondiente al nivel cargado (1 a 4 barras)
   void _handleSpecialAttack() {
-    // Especial 2: Ataque de basura concentrado al rival
+    final bars = _engine.specialChargeBars;
+    if (bars <= 0) {
+      _triggerImpactBanner('SIN CARGA', sub: 'HAZ UN TETRIS (4 LÍNEAS) PARA CARGAR', color: const Color(0xFF8B949E));
+      return;
+    }
+
     _audioService.play(TetrisSfx.tetris);
-    if (widget.mode == GameMode.duel1v1 && widget.realtimeService != null) {
-      widget.realtimeService!.sendAttack(lines: 4, damageHp: 15, senderHp: _engine.currentHp);
-      setState(() => _combatLog = '¡ATAQUE ESPECIAL! -15 HP al rival.');
+    _triggerScreenShake(intensity: 6.0, duration: 0.20);
+    _engine.specialChargeBars = 0; // Consume las barras acumuladas
+
+    String attackName = '';
+    Color attackColor = const Color(0xFF00E5FF);
+    switch (bars) {
+      case 1:
+        attackName = 'GIRO INVERTIDO (20s)';
+        attackColor = const Color(0xFFFB923C);
+        _combatLog = '⚡ ¡ATAQUE NIVEL 1! Giro invertido al rival por 20s.';
+        break;
+      case 2:
+        attackName = 'FICHAS INVISIBLES (20s)';
+        attackColor = const Color(0xFFC084FC);
+        _combatLog = '👻 ¡ATAQUE NIVEL 2! Fichas invisibles al rival por 20s.';
+        break;
+      case 3:
+        attackName = 'VELOCIDAD x4 (20s)';
+        attackColor = const Color(0xFF38BDF8);
+        _combatLog = '⚡ ¡ATAQUE NIVEL 3! Caída acelerada x4 al rival por 20s.';
+        break;
+      case 4:
+      default:
+        attackName = 'LLUVIA DE ESTRELLAS ⭐';
+        attackColor = const Color(0xFFFBBF24);
+        _combatLog = '⭐ ¡ATAQUE NIVEL 4! Lluvia de estrellas fijas al rival.';
+        break;
+    }
+
+    if (widget.realtimeService != null && (widget.mode == GameMode.duel1v1 || widget.mode == GameMode.tournament)) {
+      widget.realtimeService!.sendSpecialAttack(bars, duration: 20);
     } else {
-      // Modo Solitario: Prueba de contraataque y bonificación de puntos
-      setState(() {
-        _engine.score += 1500;
-        _combatLog = '¡ATAQUE ESPECIAL! (+1500 PTS)';
-      });
+      // Modo Solitario / Pruebas locales
+      if (bars == 4) {
+        _engine.receiveStarShower(5);
+      }
+      _engine.score += bars * 1500;
       _checkAndUpdateHiScore();
+    }
+
+    _triggerImpactBanner('¡ATAQUE LANZADO!', sub: attackName, color: attackColor);
+    if (mounted) setState(() {});
+  }
+
+  /// Finaliza la partida de manera instantánea y simultánea para ambos jugadores
+  void _terminateMatch({required bool isWinner}) {
+    if (_isMatchEnded) return;
+    _isMatchEnded = true;
+    _ticker.stop();
+    _engine.isGameOver = true;
+    _engine.isPaused = true;
+
+    if (isWinner) {
+      _audioService.play(TetrisSfx.levelUp);
+      _triggerImpactBanner('¡GANADOR!', sub: '¡HAS GANADO LA PARTIDA!', color: const Color(0xFF00D26A));
+    } else {
+      _audioService.play(TetrisSfx.gameOver);
+      _triggerImpactBanner('PERDEDOR', sub: 'PARTIDA FINALIZADA', color: const Color(0xFFEF4444));
+    }
+
+    if (mounted) {
+      setState(() {});
+      _showResultDialog(isWinner: isWinner);
     }
   }
 
   void _handleGameOver() {
+    if (_isMatchEnded) return;
     _ticker.stop();
+    _engine.isGameOver = true;
+    _engine.isPaused = true;
     _audioService.play(TetrisSfx.gameOver);
 
     if (widget.matchId != null && widget.opponentTeamId != null) {
@@ -925,23 +1082,79 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
           winnerTeamId: widget.opponentTeamId!,
         );
       }
-      _showEndDialog('DERROTA');
+      _terminateMatch(isWinner: false);
     } else {
-      _showEndDialog('GAME OVER');
+      _terminateMatch(isWinner: false);
     }
   }
 
-  void _showEndDialog(String title) {
+  /// Cartel prominente de GANADOR o PERDEDOR según el resultado
+  void _showResultDialog({required bool isWinner}) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF161B22),
-        title: Text(title, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: Text(
-          'Líneas limpiadas: ${_engine.linesCleared}\nLíneas enviadas: ${_engine.linesSent}',
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Color(0xFF8B949E), fontSize: 13),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(
+            color: isWinner ? const Color(0xFF00D26A) : const Color(0xFFEF4444),
+            width: 2.2,
+          ),
+        ),
+        title: Column(
+          children: [
+            Icon(
+              isWinner ? Icons.emoji_events_rounded : Icons.sentiment_very_dissatisfied_rounded,
+              color: isWinner ? const Color(0xFFFFD700) : const Color(0xFFEF4444),
+              size: 52,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              isWinner ? 'GANADOR' : 'PERDEDOR',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: isWinner ? const Color(0xFF00D26A) : const Color(0xFFEF4444),
+                fontWeight: FontWeight.w900,
+                fontSize: 24,
+                letterSpacing: 2.0,
+                shadows: [
+                  Shadow(
+                    color: (isWinner ? const Color(0xFF00D26A) : const Color(0xFFEF4444)).withOpacity(0.6),
+                    blurRadius: 10,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              isWinner
+                  ? '¡Victoria indiscutida! Has superado al rival.'
+                  : 'Partida finalizada. ¡Sigue entrenando!',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Color(0xFF8B949E), fontSize: 11.5),
+            ),
+          ],
+        ),
+        content: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D1117),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFF30363D)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildResultStatRow('Puntuación:', '${_engine.score} pts'),
+              const SizedBox(height: 5),
+              _buildResultStatRow('Líneas limpiadas:', '${_engine.linesCleared}'),
+              const SizedBox(height: 5),
+              _buildResultStatRow('Ataques enviados:', '${_engine.linesSent}'),
+              const SizedBox(height: 5),
+              _buildResultStatRow('Combo máximo alcanzado:', 'x${_engine.combo}'),
+            ],
+          ),
         ),
         actions: [
           Center(
@@ -950,12 +1163,29 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
                 Navigator.of(ctx).pop();
                 Navigator.of(context).pop();
               },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5865F2)),
-              child: const Text('VOLVER AL LOBBY', style: TextStyle(fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isWinner ? const Color(0xFF238636) : const Color(0xFF5865F2),
+                padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 11),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text(
+                'VOLVER AL LOBBY',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, letterSpacing: 1),
+              ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildResultStatRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: Color(0xFF8B949E), fontSize: 11.5)),
+        Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5)),
+      ],
     );
   }
 
@@ -1196,6 +1426,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
     return Column(
       children: [
         _buildCombatStatusBar(),
+        _buildSpecialAttackGauge(),
 
         // Área Central Dinámica: Tablero y Columnas Adaptativas (0 Overflow Garantizado)
         Expanded(
@@ -1297,6 +1528,10 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
                                   ),
                                   const SizedBox(height: 4),
                                   _buildPulsingComboCard(),
+                                  if (widget.mode == GameMode.duel1v1 || widget.mode == GameMode.tournament) ...[
+                                    const SizedBox(height: 3),
+                                    _buildOpponentMinimapCard(),
+                                  ],
                                 ],
                               ),
                             ),
@@ -1765,72 +2000,197 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
     );
   }
 
-  Widget _buildOpponentStatusBar() {
-    int maxOccupiedRow = 0;
-    for (int y = 0; y < _engine.rows; y++) {
-      if (_engine.grid[y].any((c) => c != null)) {
-        maxOccupiedRow = _engine.rows - y;
+  /// Barra visual de 4 segmentos de Ataque Especial (cargada con TETRIS)
+  Widget _buildSpecialAttackGauge() {
+    final bars = _engine.specialChargeBars;
+
+    Color activeColor;
+    String attackTitle;
+    switch (bars) {
+      case 1:
+        activeColor = const Color(0xFFFB923C);
+        attackTitle = 'GIRO ⟲ (20s)';
         break;
-      }
+      case 2:
+        activeColor = const Color(0xFFC084FC);
+        attackTitle = 'INVISIBLE 👻 (20s)';
+        break;
+      case 3:
+        activeColor = const Color(0xFF38BDF8);
+        attackTitle = 'VELOCIDAD x4 ⚡';
+        break;
+      case 4:
+        activeColor = const Color(0xFFFBBF24);
+        attackTitle = 'ESTRELLAS ⭐';
+        break;
+      default:
+        activeColor = const Color(0xFF64748B);
+        attackTitle = 'HAZ TETRIS (4L)';
+        break;
     }
 
+    return GestureDetector(
+      onTap: _handleSpecialAttack,
+      child: Container(
+        height: 20,
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 1.5),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFF161B22),
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(
+            color: bars > 0 ? activeColor.withOpacity(0.85) : const Color(0xFF30363D),
+            width: bars > 0 ? 1.2 : 0.8,
+          ),
+          boxShadow: bars > 0
+              ? [BoxShadow(color: activeColor.withOpacity(0.35), blurRadius: 6)]
+              : null,
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.bolt, size: 12, color: activeColor),
+            const SizedBox(width: 3),
+            Text(
+              bars > 0 ? 'ATAQUE ($bars/4):' : 'ATAQUE:',
+              style: TextStyle(
+                color: bars > 0 ? activeColor : const Color(0xFF8B949E),
+                fontSize: 8.0,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.4,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              attackTitle,
+              style: TextStyle(
+                color: bars > 0 ? Colors.white : const Color(0xFF64748B),
+                fontSize: 8.0,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const Spacer(),
+            // 4 BARRAS DE CARGA
+            Row(
+              children: List.generate(4, (i) {
+                final isFilled = i < bars;
+                final Color barColor = [
+                  const Color(0xFFFB923C), // Barra 1: Giro
+                  const Color(0xFFC084FC), // Barra 2: Invisible
+                  const Color(0xFF38BDF8), // Barra 3: Caída x4
+                  const Color(0xFFFBBF24), // Barra 4: Estrellas
+                ][i];
+
+                return Container(
+                  width: 14,
+                  height: 6,
+                  margin: const EdgeInsets.symmetric(horizontal: 1.2),
+                  decoration: BoxDecoration(
+                    color: isFilled ? barColor : const Color(0xFF21262D),
+                    borderRadius: BorderRadius.circular(2),
+                    border: Border.all(
+                      color: isFilled ? Colors.white.withOpacity(0.6) : const Color(0xFF30363D),
+                      width: 0.5,
+                    ),
+                    boxShadow: isFilled
+                        ? [BoxShadow(color: barColor.withOpacity(0.6), blurRadius: 4)]
+                        : null,
+                  ),
+                );
+              }),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Minimapa de la pantalla del rival en vivo con LED indicador de estado
+  Widget _buildOpponentMinimapCard() {
+    final stackHeight = _opponentStackHeight;
     Color ledColor;
-    String statusText;
-    if (maxOccupiedRow >= 14) {
-      ledColor = const Color(0xFFEF4444);
-      statusText = 'CRÍTICO';
-    } else if (maxOccupiedRow >= 8) {
-      ledColor = const Color(0xFFF59E0B);
-      statusText = 'ALERTA';
+    String statusDesc;
+    if (stackHeight >= 15) {
+      ledColor = const Color(0xFFFF1744); // Rojo: al límite de perder
+      statusDesc = 'PELIGRO';
+    } else if (stackHeight >= 8) {
+      ledColor = const Color(0xFFFFD700); // Amarillo: advertencia
+      statusDesc = 'ALERTA';
     } else {
-      ledColor = const Color(0xFF10B981);
-      statusText = 'SEGURO';
+      ledColor = const Color(0xFF00D26A); // Verde: normal
+      statusDesc = 'SEGURO';
     }
 
-    final label = widget.mode == GameMode.duel1v1 ? 'RIVAL' : 'ESTADO';
+    final double pulse = (sin(_ambientTime * 7.0) * 0.35 + 0.65);
 
     return Container(
-      width: 58,
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 2.5, horizontal: 2.0),
       decoration: BoxDecoration(
         color: const Color(0xFF0F141C),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: ledColor.withOpacity(0.8), width: 1.2),
-        boxShadow: [BoxShadow(color: ledColor.withOpacity(0.35), blurRadius: 6)],
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: ledColor.withOpacity(0.7), width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: ledColor.withOpacity(0.35 * pulse),
+            blurRadius: 5,
+            spreadRadius: 0.5,
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: const TextStyle(color: Color(0xFF8B949E), fontSize: 7.5, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 2),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 7, height: 7,
+                width: 6,
+                height: 6,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: ledColor,
-                  boxShadow: [BoxShadow(color: ledColor, blurRadius: 4, spreadRadius: 1)],
+                  color: ledColor.withOpacity(pulse),
+                  boxShadow: [
+                    BoxShadow(
+                      color: ledColor.withOpacity(pulse),
+                      blurRadius: 4,
+                      spreadRadius: 1,
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 3),
-              Flexible(
-                child: Text(
-                  statusText,
-                  style: TextStyle(color: ledColor, fontSize: 8, fontWeight: FontWeight.w900),
-                  overflow: TextOverflow.ellipsis,
+              const Text(
+                'RIVAL',
+                style: TextStyle(
+                  color: Color(0xFF8B949E),
+                  fontSize: 7.0,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.5,
                 ),
               ),
             ],
           ),
-          if (_engine.pendingGarbageLines > 0) ...[
-            const SizedBox(height: 2),
-            Text(
-              '+${_engine.pendingGarbageLines} IN',
-              style: const TextStyle(color: Color(0xFFEF4444), fontSize: 7.5, fontWeight: FontWeight.w900),
+          const SizedBox(height: 2),
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF0A0D12),
+              borderRadius: BorderRadius.circular(3),
+              border: Border.all(color: const Color(0xFF21262D), width: 0.8),
             ),
-          ],
+            child: CustomPaint(
+              size: const Size(34, 68),
+              painter: OpponentBoardMinimapPainter(matrix: _opponentGrid),
+            ),
+          ),
+          const SizedBox(height: 1.5),
+          Text(
+            '$stackHeight/20 ($statusDesc)',
+            style: TextStyle(
+              color: ledColor,
+              fontSize: 6.0,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ],
       ),
     );
@@ -2182,26 +2542,41 @@ class TetrisBoardPainter extends CustomPainter {
       }
     }
 
-    // 3. Sombra Holográfica de Caída (Ghost Piece - Tetris Effect Glow)
+    // 3. Sombra Holográfica de Caída (Ghost Piece) y 4. Pieza Activa en el Aire
     if (engine.currentPiece != null && !engine.isGameOver) {
       final piece = engine.currentPiece!;
       final shape = tetrominoShapes[piece.type]![piece.rotation];
       final ghostPos = engine.getGhostPosition();
       final pieceColor = tetrominoColors[piece.type] ?? const Color(0xFF00E5FF);
 
-      for (int r = 0; r < shape.length; r++) {
-        for (int c = 0; c < shape[r].length; c++) {
-          if (shape[r][c] != 0) {
-            final gx = (ghostPos.x + c) * blockW;
-            final gy = (ghostPos.y - startRow + r) * blockH;
-            if (gy < 0) continue;
-            _drawGhostCell(canvas, gx, gy, blockW, blockH, pieceColor);
+      // Barra 2: Fichas invisibles titilando si invisibleFlickerTimer > 0
+      final bool isInvisibleMode = engine.invisibleFlickerTimer > 0;
+      final double flickerVal = (sin(ambientTime * 14.0) * 0.5 + 0.5);
+      final double activeOpacity = isInvisibleMode ? (flickerVal > 0.65 ? 0.30 : 0.02) : 1.0;
+
+      // Sombra Ghost Piece: oculta en modo invisible para no delatar la posición
+      if (!isInvisibleMode) {
+        for (int r = 0; r < shape.length; r++) {
+          for (int c = 0; c < shape[r].length; c++) {
+            if (shape[r][c] != 0) {
+              final gx = (ghostPos.x + c) * blockW;
+              final gy = (ghostPos.y - startRow + r) * blockH;
+              if (gy < 0) continue;
+              _drawGhostCell(canvas, gx, gy, blockW, blockH, pieceColor);
+            }
           }
         }
       }
 
-      // 4. Pieza Activa en el Aire (CUBITOS MÁS PEQUEÑOS INDIVIDUALES MIENTRAS CAE)
+      // 4. Pieza Activa en el Aire (CUBITOS INDIVIDUALES MIENTRAS CAE)
       final smoothY = engine.getRenderY();
+      if (activeOpacity < 1.0) {
+        canvas.saveLayer(
+          Rect.fromLTWH(0, 0, size.width, size.height),
+          Paint()..color = Color.fromRGBO(255, 255, 255, activeOpacity),
+        );
+      }
+
       for (int r = 0; r < shape.length; r++) {
         for (int c = 0; c < shape[r].length; c++) {
           if (shape[r][c] != 0) {
@@ -2218,6 +2593,10 @@ class TetrisBoardPainter extends CustomPainter {
             );
           }
         }
+      }
+
+      if (activeOpacity < 1.0) {
+        canvas.restore();
       }
     }
 
@@ -2413,6 +2792,10 @@ class TetrisBoardPainter extends CustomPainter {
       _drawSmoothDiamond(canvas, cellRect, topConn, bottomConn, leftConn, rightConn, boardSize);
       return;
     }
+    if (cell.cubeType == CubeType.star) {
+      _drawStarCube(canvas, cellRect);
+      return;
+    }
 
     final baseColor = tetrominoColors[cell.type] ?? const Color(0xFF00E5FF);
     final HSLColor hsl = HSLColor.fromColor(baseColor);
@@ -2572,6 +2955,43 @@ class TetrisBoardPainter extends CustomPainter {
       ..color = Colors.white.withOpacity(0.45)
       ..strokeWidth = 1.0;
     canvas.drawLine(rect.topLeft + const Offset(2, 2), rect.bottomRight - const Offset(2, 2), shinePaint);
+  }
+
+  /// Renderizado de Minicubo Estrella de Lluvia Cósmica (Barra 4)
+  void _drawStarCube(Canvas canvas, Rect rect) {
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(2.5));
+    final bgPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF3B0764), Color(0xFF1E1B4B)],
+      ).createShader(rect);
+    canvas.drawRRect(rrect, bgPaint);
+
+    final borderPaint = Paint()
+      ..color = const Color(0xFFFFD700).withOpacity(0.9)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    canvas.drawRRect(rrect, borderPaint);
+
+    final haloPaint = Paint()
+      ..color = const Color(0xFFFFD700).withOpacity(0.35)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5);
+    canvas.drawCircle(rect.center, rect.width * 0.35, haloPaint);
+
+    final starPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    final c = rect.center;
+    final r = rect.width * 0.35;
+    final Path path = Path();
+    path.moveTo(c.dx, c.dy - r);
+    path.quadraticBezierTo(c.dx, c.dy, c.dx + r, c.dy);
+    path.quadraticBezierTo(c.dx, c.dy, c.dx, c.dy + r);
+    path.quadraticBezierTo(c.dx, c.dy, c.dx - r, c.dy);
+    path.quadraticBezierTo(c.dx, c.dy, c.dx, c.dy - r);
+    path.close();
+    canvas.drawPath(path, starPaint);
   }
 
   void _drawSmoothGold(Canvas canvas, Rect rect, bool topConn, bool bottomConn, bool leftConn, bool rightConn, Size boardSize) {
@@ -2751,3 +3171,68 @@ class TetrominoPreviewPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
+
+/// CustomPainter para el minimapa en vivo del rival (10 columnas x 20 filas visibles)
+class OpponentBoardMinimapPainter extends CustomPainter {
+  final List<List<int>> matrix;
+
+  OpponentBoardMinimapPainter({required this.matrix});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cellW = size.width / 10.0;
+    final cellH = size.height / 20.0;
+
+    // Fondo oscuro profundo
+    final bgPaint = Paint()..color = const Color(0xFF0D1117);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
+
+    // Línea de alerta roja a las 4 filas superiores (zona crítica)
+    final dangerPaint = Paint()
+      ..color = const Color(0xFFFF1744).withOpacity(0.40)
+      ..strokeWidth = 0.6;
+    canvas.drawLine(Offset(0, 4 * cellH), Offset(size.width, 4 * cellH), dangerPaint);
+
+    if (matrix.isEmpty) {
+      // Rejilla sutil vacía de espera
+      final linePaint = Paint()
+        ..color = const Color(0xFF1F2937).withOpacity(0.5)
+        ..strokeWidth = 0.4;
+      for (int c = 1; c < 10; c++) {
+        canvas.drawLine(Offset(c * cellW, 0), Offset(c * cellW, size.height), linePaint);
+      }
+      for (int r = 1; r < 20; r++) {
+        canvas.drawLine(Offset(0, r * cellH), Offset(size.width, r * cellH), linePaint);
+      }
+      return;
+    }
+
+    final blockPaint = Paint()..color = const Color(0xFF38BDF8);
+    final starPaint = Paint()..color = const Color(0xFFFFD700);
+
+    final rows = matrix.length;
+    for (int y = 0; y < rows && y < 20; y++) {
+      final row = matrix[y];
+      for (int x = 0; x < row.length && x < 10; x++) {
+        final val = row[x];
+        if (val > 0) {
+          final rect = Rect.fromLTWH(
+            x * cellW + 0.35,
+            y * cellH + 0.35,
+            cellW - 0.7,
+            cellH - 0.7,
+          );
+          if (val == 2) {
+            canvas.drawRect(rect, starPaint);
+          } else {
+            canvas.drawRect(rect, blockPaint);
+          }
+        }
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant OpponentBoardMinimapPainter oldDelegate) => true;
+}
+

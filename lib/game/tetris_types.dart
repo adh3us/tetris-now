@@ -2,7 +2,15 @@ import 'package:flutter/material.dart';
 
 enum TetrominoType { I, J, L, O, S, T, Z, GARBAGE }
 
-enum CubeType { none, silver, gold, diamond }
+enum CubeType { none, silver, gold, diamond, star }
+
+enum SpecialAttackTier {
+  none,
+  invertedRotation, // Barra 1: Giro invertido (20s)
+  invisibleFlicker, // Barra 2: Fichas invisibles titilando (20s)
+  speedX4,          // Barra 3: Velocidad x4
+  starShower,       // Barra 4: Lluvia de estrellas fijas
+}
 
 typedef ArmorTier = CubeType;
 

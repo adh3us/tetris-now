@@ -246,7 +246,7 @@ class LandscapeRightControl extends StatelessWidget {
           _btn(onTap: () => onAction(GameAction.rotateCW), label: 'ROTAR', icon: Icons.refresh, color: const Color(0xFF5865F2), size: 42, isMain: true),
           Positioned(top: 0, child: _btn(onTap: () => onAction(GameAction.activateShield), label: 'ESC', icon: Icons.shield, color: const Color(0xFF00D26A), size: 24)),
           Positioned(left: 0, child: _btn(onTap: () => onAction(GameAction.hardDrop), label: 'DROP', color: const Color(0xFFF778BA), size: 24)),
-          Positioned(right: 0, child: _btn(onTap: () => onAction(GameAction.rotateCCW), label: '⟲', color: const Color(0xFFDA3633), size: 24)),
+          Positioned(right: 0, child: _btn(onTap: () => onAction(GameAction.specialAttack), label: 'ATQ', icon: Icons.bolt, color: const Color(0xFF00E5FF), size: 24)),
           Positioned(bottom: 0, child: _btn(onTap: () => onAction(GameAction.softDrop), label: 'DOWN', color: const Color(0xFF00E5FF), size: 24)),
           Positioned(top: 2, left: 2, child: _btn(onTap: () => onAction(GameAction.hold), label: 'HOLD', color: const Color(0xFFA000F0), size: 22)),
         ],
@@ -429,13 +429,12 @@ class _MobaTouchControllerState extends State<MobaTouchController> {
                   ],
                 ),
                 const SizedBox(height: 6),
-                // Fila Inferior (3 botones): ROTAR CCW, ROTAR CW (Principal), DROP
+                // Fila Inferior (2 botones): ROTAR CW (Principal), DROP
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildActionButton(onTap: () => widget.onAction(GameAction.rotateCCW), label: '⟲ ROTAR', icon: Icons.undo, color: const Color(0xFFDA3633), size: 40),
-                    _buildActionButton(onTap: () => widget.onAction(GameAction.rotateCW), label: '↻ ROTAR', icon: Icons.refresh, color: const Color(0xFF5865F2), size: 40, isMain: true),
-                    _buildActionButton(onTap: () => widget.onAction(GameAction.hardDrop), label: 'DROP', icon: Icons.keyboard_double_arrow_down_rounded, color: const Color(0xFFF778BA), size: 40),
+                    _buildActionButton(onTap: () => widget.onAction(GameAction.rotateCW), label: '↻ ROTAR', icon: Icons.refresh, color: const Color(0xFF5865F2), size: 42, isMain: true),
+                    _buildActionButton(onTap: () => widget.onAction(GameAction.hardDrop), label: 'DROP', icon: Icons.keyboard_double_arrow_down_rounded, color: const Color(0xFFF778BA), size: 42),
                   ],
                 ),
               ],
@@ -597,7 +596,7 @@ class _VirtualDualShockControllerState extends State<VirtualDualShockController>
                   Positioned(top: 0, child: _buildButton(onTap: () => widget.onAction(GameAction.activateShield), size: 25, child: const Text('△', style: TextStyle(color: Color(0xFF00E676), fontSize: 13, fontWeight: FontWeight.w900)))),
                   Positioned(bottom: 0, child: _buildButton(onTap: () => widget.onAction(GameAction.rotateCW), size: 25, child: const Text('✕', style: TextStyle(color: Color(0xFF2979FF), fontSize: 13, fontWeight: FontWeight.w900)))),
                   Positioned(left: 0, child: _buildButton(onTap: () => widget.onAction(GameAction.hardDrop), size: 25, child: const Text('▢', style: TextStyle(color: Color(0xFFF50057), fontSize: 13, fontWeight: FontWeight.w900)))),
-                  Positioned(right: 0, child: _buildButton(onTap: () => widget.onAction(GameAction.rotateCCW), size: 25, child: const Text('◯', style: TextStyle(color: Color(0xFFFF1744), fontSize: 13, fontWeight: FontWeight.w900)))),
+                  Positioned(right: 0, child: _buildButton(onTap: () => widget.onAction(GameAction.specialAttack), size: 25, child: const Text('⚡', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 13, fontWeight: FontWeight.w900)))),
                 ],
               ),
             ),

@@ -26,6 +26,12 @@ class TetrisEngine {
   bool isPaused = false;
   int specialAttackCharges = 2;
 
+  // Sistema de 4 Barras de Ataques Especiales (Cargadas con TETRIS)
+  int specialChargeBars = 0; // 0 a 4 barras
+  double invertedRotationTimer = 0.0; // Barra 1: Giro invertido (20s)
+  double invisibleFlickerTimer = 0.0;  // Barra 2: Fichas invisibles titilantes (20s)
+  double speedMultiplierTimer = 0.0;  // Barra 3: Caída x4 velocidad (20s)
+
   // Sistema de Combate y Salud (100 HP)
   int maxHp = 100;
   int currentHp = 100;
@@ -58,6 +64,57 @@ class TetrisEngine {
       }
       grid.add(row);
     }
+  }
+
+  /// Barra 4: Lluvia de estrellas fijas aleatorias sobre la grilla visible
+  void receiveStarShower([int count = 10]) {
+    if (isShieldActive || isGameOver) return;
+    final startRow = max(0, rows - 16);
+    int placed = 0;
+    for (int attempt = 0; attempt < 100 && placed < count; attempt++) {
+      final r = startRow + _rng.nextInt(rows - startRow);
+      final c = _rng.nextInt(cols);
+      if (grid[r][c] == null) {
+        grid[r][c] = Cell(
+          type: TetrominoType.GARBAGE,
+          cubeType: CubeType.star,
+          pieceId: 0,
+        );
+        placed++;
+      }
+    }
+  }
+
+  /// Calcula la altura del apilado en las 20 filas visibles (0 a 20)
+  int getStackHeight() {
+    final visibleStart = max(0, rows - 20);
+    for (int y = visibleStart; y < rows; y++) {
+      if (grid[y].any((c) => c != null)) {
+        return rows - y;
+      }
+    }
+    return 0;
+  }
+
+  /// Matriz compacta 20x10 para el minimapa del rival en tiempo real
+  List<List<int>> getCompactVisibleMatrix() {
+    final visibleStart = max(0, rows - 20);
+    final List<List<int>> res = [];
+    for (int y = visibleStart; y < rows; y++) {
+      final row = <int>[];
+      for (int x = 0; x < cols; x++) {
+        final cell = grid[y][x];
+        if (cell == null) {
+          row.add(0);
+        } else if (cell.cubeType == CubeType.star) {
+          row.add(2); // Estrella
+        } else {
+          row.add(1); // Bloque normal o basura
+        }
+      }
+      res.add(row);
+    }
+    return res;
   }
 
   // Caída fluida continua a 60 FPS
@@ -117,6 +174,10 @@ class TetrisEngine {
     isShieldActive = false;
     currentHp = maxHp;
     shieldSecondsRemaining = 0;
+    specialChargeBars = 0;
+    invertedRotationTimer = 0.0;
+    invisibleFlickerTimer = 0.0;
+    speedMultiplierTimer = 0.0;
     fallProgress = 0.0;
     lockDelayTimer = 0.0;
     lockResetsRemaining = 15;
@@ -218,13 +279,23 @@ class TetrisEngine {
   AttackResult? update(double dt) {
     if (isGameOver || isPaused) return null;
 
-    // 1. Temporizador de Gracia de 3 Segundos para Combos
+    // 1. Temporizador de Gracia de 3 Segundos para Combos y Efectos Especiales
     if (comboTimer > 0.0) {
       comboTimer -= dt;
       if (comboTimer <= 0.0) {
         combo = 0;
         comboTimer = 0.0;
       }
+    }
+
+    if (invertedRotationTimer > 0.0) {
+      invertedRotationTimer = max(0.0, invertedRotationTimer - dt);
+    }
+    if (invisibleFlickerTimer > 0.0) {
+      invisibleFlickerTimer = max(0.0, invisibleFlickerTimer - dt);
+    }
+    if (speedMultiplierTimer > 0.0) {
+      speedMultiplierTimer = max(0.0, speedMultiplierTimer - dt);
     }
 
     // 2. Animación de Cascada / Caída Libre (0.5s suspendida + deslizamiento suave)
@@ -274,8 +345,9 @@ class TetrisEngine {
       isTouchingSurface = false;
       lockDelayTimer = 0.0;
 
-      // Caída normal por gravedad
-      fallProgress += dropSpeed * dt;
+      // Caída normal por gravedad (x4 si está activo el ataque especial)
+      final effectiveDropSpeed = speedMultiplierTimer > 0.0 ? dropSpeed * 4.0 : dropSpeed;
+      fallProgress += effectiveDropSpeed * dt;
       if (fallProgress >= 1.0) {
         final rowsToFall = fallProgress.floor();
         fallProgress -= rowsToFall;
@@ -346,8 +418,10 @@ class TetrisEngine {
     if (currentPiece == null || isGameOver || isPaused || isCascading) return false;
     if (currentPiece!.type == TetrominoType.O) return true; // Pieza O no rota
 
+    // Barra 1: Invertir sentido de giro si el ataque está activo
+    final effectiveDir = invertedRotationTimer > 0.0 ? -dir : dir;
     final fromRot = currentPiece!.rotation;
-    final toRot = (fromRot + dir) % 4 < 0 ? (fromRot + dir) % 4 + 4 : (fromRot + dir) % 4;
+    final toRot = (fromRot + effectiveDir) % 4 < 0 ? (fromRot + effectiveDir) % 4 + 4 : (fromRot + effectiveDir) % 4;
 
     final kicks = _getSrsKicks(currentPiece!.type, fromRot, toRot);
 
@@ -652,6 +726,7 @@ class TetrisEngine {
       int damageHp = 0;
       int diamondLines = 0;
       if (cleared >= 4) {
+        specialChargeBars = min(4, specialChargeBars + 1);
         damageHp = 10;
         if (goldLines > 0) diamondLines += 2;
         if (silverLines > 0) diamondLines += 1;
@@ -756,7 +831,12 @@ class TetrisEngine {
           lineScore = 400 * level;
         }
       } else {
-        if (totalCleared >= 4) { attackLines = 4; energyGain = 2; lineScore = 800 * level; }
+        if (totalCleared >= 4) {
+          specialChargeBars = min(4, specialChargeBars + 1);
+          attackLines = 4;
+          energyGain = 2;
+          lineScore = 800 * level;
+        }
         else if (totalCleared == 3) { attackLines = 2; energyGain = 1; lineScore = 500 * level; }
         else if (totalCleared == 2) { attackLines = 1; lineScore = 300 * level; }
         else if (totalCleared == 1) { attackLines = 0; lineScore = 100 * level; }
