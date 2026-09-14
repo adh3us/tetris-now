@@ -65,6 +65,8 @@ class TournamentInvitationModel {
       torneoNombre: nombre,
     );
   }
+}
+
 class MyTournamentMatch {
   final String matchId;
   final String? torneoPartidaId;

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/supabase_config.dart';
+import '../game/tetris_types.dart';
 import '../services/tetris_match_service.dart';
 import '../services/tetris_realtime_service.dart';
 import '../services/tournament_service.dart';
@@ -38,9 +39,8 @@ class _TournamentBracketsScreenState extends State<TournamentBracketsScreen> {
           .getMyPendingTournamentMatch(widget.tournamentId)
           .timeout(const Duration(seconds: 4), onTimeout: () => null);
 
-      final results = await Future.wait([matchesFuture, myMatchFuture]);
-      final list = results[0] as List<TetrisMatchModel>;
-      final myMatch = results[1] as MyTournamentMatch?;
+      final list = await matchesFuture;
+      final myMatch = await myMatchFuture;
 
       if (mounted) {
         setState(() {
@@ -373,7 +373,11 @@ class _TournamentBracketsScreenState extends State<TournamentBracketsScreen> {
                     onPressed: _isLaunching ? null : () => _jugarCruce(_myPendingMatch!),
                     icon: const Icon(Icons.play_arrow_rounded, size: 16, color: Color(0xFF60A5FA)),
                     label: const Text('JUGAR', style: TextStyle(color: Color(0xFF60A5FA), fontSize: 11, fontWeight: FontWeight.bold)),
-                    style: TextButton.styleToFlat(),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                      minimumSize: const Size(0, 24),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
                   ),
               ],
             ),
@@ -418,16 +422,6 @@ class _TournamentBracketsScreenState extends State<TournamentBracketsScreen> {
           ),
         ],
       ),
-    );
-  }
-}
-
-extension on TextButton {
-  static ButtonStyle styleToFlat() {
-    return TextButton.styleFrom(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-      minimumSize: const Size(0, 24),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
   }
 }
