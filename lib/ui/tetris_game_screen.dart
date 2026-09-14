@@ -948,6 +948,8 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       } else {
         _combatLog = 'Enviaste +${res.linesSent} líneas al rival.';
       }
+    }
+
     if (widget.realtimeService != null && (widget.mode == GameMode.duel1v1 || widget.mode == GameMode.tournament)) {
       widget.realtimeService!.sendBoardSync(
         _engine.getCompactVisibleMatrix(),
@@ -1045,7 +1047,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
     _engine.isPaused = true;
 
     if (isWinner) {
-      _audioService.play(TetrisSfx.levelUp);
+      _audioService.play(TetrisSfx.tetris);
       _triggerImpactBanner('¡GANADOR!', sub: '¡HAS GANADO LA PARTIDA!', color: const Color(0xFF00D26A));
     } else {
       _audioService.play(TetrisSfx.gameOver);
