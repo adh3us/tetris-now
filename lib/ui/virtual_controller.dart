@@ -10,6 +10,8 @@ class VirtualControllerWrapper extends StatelessWidget {
   final VoidCallback onCycleOpacity;
   final VoidCallback? onOpenMap;
 
+  final bool isShieldActive;
+
   const VirtualControllerWrapper({
     Key? key,
     required this.onAction,
@@ -19,6 +21,7 @@ class VirtualControllerWrapper extends StatelessWidget {
     required this.onToggleTheme,
     required this.onCycleOpacity,
     this.onOpenMap,
+    this.isShieldActive = false,
   }) : super(key: key);
 
   @override
@@ -53,15 +56,15 @@ class VirtualControllerWrapper extends StatelessWidget {
             ),
           ),
           initialTheme == ControllerTheme.dualshock
-              ? VirtualDualShockController(onAction: onAction, onOpenMap: onOpenMap)
-              : MobaTouchController(onAction: onAction, onOpenMap: onOpenMap),
+              ? VirtualDualShockController(onAction: onAction, onOpenMap: onOpenMap, isShieldActive: isShieldActive)
+              : MobaTouchController(onAction: onAction, onOpenMap: onOpenMap, isShieldActive: isShieldActive),
         ],
       ),
     );
   }
 }
 
-/// Pastilla física estilo botón arcade para la Pausa
+/// Pastilla física estilo botón arcade para la Pausa con feedback lumínico
 class _ArcadePausePill extends StatefulWidget {
   final VoidCallback onTap;
   const _ArcadePausePill({Key? key, required this.onTap}) : super(key: key);
@@ -75,32 +78,49 @@ class _ArcadePausePillState extends State<_ArcadePausePill> {
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
-      onPointerDown: (_) {
+    return GestureDetector(
+      onTapDown: (_) {
         setState(() => _isPressed = true);
         widget.onTap();
       },
-      onPointerUp: (_) => setState(() => _isPressed = false),
-      onPointerCancel: (_) => setState(() => _isPressed = false),
+      onTapUp: (_) => setState(() => _isPressed = false),
+      onTapCancel: () => setState(() => _isPressed = false),
       behavior: HitTestBehavior.opaque,
       child: Transform.translate(
         offset: Offset(0, _isPressed ? 2.0 : 0.0),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0xFFFDE047), Color(0xFFCA8A04), Color(0xFF854D0E)],
+              colors: _isPressed
+                  ? const [Color(0xFFFEF08A), Color(0xFFEAB308), Color(0xFFA16207)]
+                  : const [Color(0xFFFDE047), Color(0xFFCA8A04), Color(0xFF854D0E)],
             ),
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: const Color(0xFFFEF08A), width: 1.0),
+            border: Border.all(
+              color: _isPressed ? Colors.white : const Color(0xFFFEF08A),
+              width: 1.0,
+            ),
             boxShadow: [
               BoxShadow(
                 color: const Color(0xFF583307),
                 offset: Offset(0, _isPressed ? 1.0 : 3.0),
                 blurRadius: 0.5,
               ),
+              if (_isPressed) ...[
+                BoxShadow(
+                  color: const Color(0xFFFACC15).withOpacity(0.95), // Fogonazo ámbar eléctrico
+                  blurRadius: 12.0,
+                  spreadRadius: 2.5,
+                ),
+                const BoxShadow(
+                  color: Colors.white,
+                  blurRadius: 3.0,
+                  spreadRadius: 0.5,
+                ),
+              ],
             ],
           ),
           child: const Row(
@@ -132,7 +152,7 @@ enum Arcade3DTheme {
   dark,   // Carbón oscuro mate con bisel plata (#CBD5E1) para cruceta
 }
 
-/// Botón Arcade Físico 3D con sensación táctil de hundimiento (microswitch)
+/// Botón Arcade Físico 3D Reactivo con sensación táctil de microswitch y fogonazo lumínico
 class Arcade3DButton extends StatefulWidget {
   final VoidCallback onTap;
   final String label;
@@ -141,6 +161,8 @@ class Arcade3DButton extends StatefulWidget {
   final bool isMain;
   final Arcade3DTheme theme;
   final BorderRadius? borderRadius;
+  final bool isPulsing;
+  final Color? pulseGlowColor;
 
   const Arcade3DButton({
     Key? key,
@@ -151,26 +173,70 @@ class Arcade3DButton extends StatefulWidget {
     this.isMain = false,
     this.theme = Arcade3DTheme.bronze,
     this.borderRadius,
+    this.isPulsing = false,
+    this.pulseGlowColor,
   }) : super(key: key);
 
   @override
   State<Arcade3DButton> createState() => _Arcade3DButtonState();
 }
 
-class _Arcade3DButtonState extends State<Arcade3DButton> {
+class _Arcade3DButtonState extends State<Arcade3DButton> with SingleTickerProviderStateMixin {
   bool _isPressed = false;
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    _pulseAnimation = Tween<double>(begin: 0.25, end: 0.90).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+    if (widget.isPulsing) {
+      _pulseController.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant Arcade3DButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isPulsing != oldWidget.isPulsing) {
+      if (widget.isPulsing) {
+        _pulseController.repeat(reverse: true);
+      } else {
+        _pulseController.stop();
+        _pulseController.reset();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final bool isBronze = widget.theme == Arcade3DTheme.bronze;
     final bool isSilver = widget.theme == Arcade3DTheme.silver;
 
-    // Gradientes de superficie metálica / acrílica
+    // Gradientes de superficie metálica / acrílica (con destello al presionar)
     final List<Color> surfaceColors = isBronze
-        ? [const Color(0xFFFB923C), const Color(0xFFEA580C), const Color(0xFF9A3412)]
+        ? (_isPressed
+            ? const [Color(0xFFFFA726), Color(0xFFF97316), Color(0xFFC2410C)]
+            : const [Color(0xFFFB923C), Color(0xFFEA580C), Color(0xFF9A3412)])
         : isSilver
-            ? [const Color(0xFFF8FAFC), const Color(0xFFCBD5E1), const Color(0xFF94A3B8)]
-            : [const Color(0xFF272F3D), const Color(0xFF161B22), const Color(0xFF0D1117)];
+            ? (_isPressed
+                ? const [Colors.white, Color(0xFFE2E8F0), Color(0xFFCBD5E1)]
+                : const [Color(0xFFF8FAFC), Color(0xFFCBD5E1), Color(0xFF94A3B8)])
+            : (_isPressed
+                ? const [Color(0xFF475569), Color(0xFF334155), Color(0xFF1E293B)]
+                : const [Color(0xFF272F3D), Color(0xFF161B22), Color(0xFF0D1117)]);
 
     // Sombra inferior biselada (labio 3D del switch)
     final Color bevelColor = isBronze
@@ -179,12 +245,12 @@ class _Arcade3DButtonState extends State<Arcade3DButton> {
             ? const Color(0xFF475569)
             : const Color(0xFF05080E);
 
-    // Borde exterior
+    // Borde exterior biselado
     final Color borderColor = isBronze
-        ? const Color(0xFFFFB74D)
+        ? (_isPressed ? const Color(0xFFFFD54F) : const Color(0xFFFFB74D))
         : isSilver
             ? const Color(0xFFFFFFFF)
-            : const Color(0xFFCBD5E1);
+            : (_isPressed ? Colors.white : const Color(0xFFCBD5E1));
 
     // Color del contenido (texto e icono)
     final Color contentColor = isBronze
@@ -194,84 +260,143 @@ class _Arcade3DButtonState extends State<Arcade3DButton> {
             : const Color(0xFFCBD5E1);
 
     final double shadowDepth = _isPressed ? 1.0 : (widget.isMain ? 4.0 : 3.0);
-    final double translateY = _isPressed ? (widget.isMain ? 3.0 : 2.0) : 0.0;
+    final double translateY = _isPressed ? (widget.isMain ? 3.0 : 2.5) : 0.0;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 2.0, top: 1.0),
-      child: Listener(
-        onPointerDown: (_) {
+      child: GestureDetector(
+        onTapDown: (_) {
           setState(() => _isPressed = true);
           widget.onTap();
         },
-        onPointerUp: (_) => setState(() => _isPressed = false),
-        onPointerCancel: (_) => setState(() => _isPressed = false),
+        onTapUp: (_) => setState(() => _isPressed = false),
+        onTapCancel: () => setState(() => _isPressed = false),
         behavior: HitTestBehavior.opaque,
-        child: Transform.translate(
-          offset: Offset(0, translateY),
-          child: Container(
-            width: widget.size,
-            height: widget.size,
-            decoration: BoxDecoration(
-              shape: widget.borderRadius == null ? BoxShape.circle : BoxShape.rectangle,
-              borderRadius: widget.borderRadius,
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: surfaceColors,
+        child: AnimatedBuilder(
+          animation: _pulseAnimation,
+          builder: (context, _) {
+            // BoxShadows: Bisel 3D + Fogonazo lumínico reactivo al presionar
+            final List<BoxShadow> shadows = [
+              // 1. Bisel 3D físico que se comprime al presionar (sensación de hundimiento)
+              BoxShadow(
+                color: bevelColor,
+                offset: Offset(0, shadowDepth),
+                blurRadius: 0.5,
               ),
-              border: Border.all(
-                color: borderColor.withOpacity(isBronze ? 0.9 : 0.85),
-                width: widget.isMain ? 2.0 : 1.3,
-              ),
-              boxShadow: [
-                // Bisel 3D físico que se reduce al presionar
-                BoxShadow(
-                  color: bevelColor,
-                  offset: Offset(0, shadowDepth),
-                  blurRadius: 0.5,
-                ),
-                if (!_isPressed)
+            ];
+
+            if (_isPressed) {
+              // 2. Fogonazo de contacto eléctrico (Microswitch switch spark)
+              if (isBronze) {
+                shadows.addAll([
+                  BoxShadow(
+                    color: const Color(0xFFFF9100).withOpacity(0.95), // Resplandor bronce/cobre intenso
+                    blurRadius: widget.isMain ? 18.0 : 12.0,
+                    spreadRadius: widget.isMain ? 3.5 : 2.5,
+                  ),
+                  const BoxShadow(
+                    color: Color(0xFFFFE082), // Núcleo ámbar de contacto
+                    blurRadius: 4.0,
+                    spreadRadius: 1.0,
+                  ),
+                ]);
+              } else if (isSilver) {
+                shadows.addAll([
+                  BoxShadow(
+                    color: const Color(0xFF00E5FF).withOpacity(0.95), // Resplandor arco voltaico cian/plata
+                    blurRadius: widget.isMain ? 18.0 : 12.0,
+                    spreadRadius: widget.isMain ? 3.5 : 2.5,
+                  ),
+                  const BoxShadow(
+                    color: Colors.white, // Chispa blanca del microswitch
+                    blurRadius: 4.0,
+                    spreadRadius: 1.0,
+                  ),
+                ]);
+              } else {
+                shadows.add(
+                  BoxShadow(
+                    color: const Color(0xFFCBD5E1).withOpacity(0.85),
+                    blurRadius: 10.0,
+                    spreadRadius: 2.0,
+                  ),
+                );
+              }
+            } else {
+              // 3. Estado de reposo o respiración suave si está activo
+              if (widget.isPulsing) {
+                final Color pColor = widget.pulseGlowColor ?? const Color(0xFF00E5FF);
+                shadows.add(
+                  BoxShadow(
+                    color: pColor.withOpacity(_pulseAnimation.value),
+                    blurRadius: 14.0,
+                    spreadRadius: 3.0,
+                  ),
+                );
+              } else {
+                shadows.add(
                   BoxShadow(
                     color: isBronze
-                        ? const Color(0x55EA580C)
-                        : isSilver
-                            ? const Color(0x33CBD5E1)
-                            : const Color(0x44000000),
+                        ? const Color(0x44EA580C)
+                        : (isSilver ? const Color(0x28CBD5E1) : const Color(0x33000000)),
                     blurRadius: widget.isMain ? 5.0 : 2.5,
                     offset: Offset(0, shadowDepth),
                   ),
-              ],
-            ),
-            alignment: Alignment.center,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Padding(
-                padding: const EdgeInsets.all(2.5),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (widget.icon != null)
-                      Icon(
-                        widget.icon,
-                        color: contentColor,
-                        size: widget.isMain ? 18.0 : (widget.size < 30 ? 11.0 : 13.0),
-                      ),
-                    if (widget.label.isNotEmpty)
-                      Text(
-                        widget.label,
-                        style: TextStyle(
-                          color: contentColor,
-                          fontSize: widget.isMain ? 8.5 : (widget.size < 30 ? 5.5 : 6.5),
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                  ],
+                );
+              }
+            }
+
+            return Transform.translate(
+              offset: Offset(0, translateY),
+              child: Container(
+                width: widget.size,
+                height: widget.size,
+                decoration: BoxDecoration(
+                  shape: widget.borderRadius == null ? BoxShape.circle : BoxShape.rectangle,
+                  borderRadius: widget.borderRadius,
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: surfaceColors,
+                  ),
+                  border: Border.all(
+                    color: borderColor.withOpacity(isBronze ? 0.95 : 0.90),
+                    width: widget.isMain ? 2.0 : 1.3,
+                  ),
+                  boxShadow: shadows,
+                ),
+                alignment: Alignment.center,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Padding(
+                    padding: const EdgeInsets.all(2.5),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (widget.icon != null)
+                          Icon(
+                            widget.icon,
+                            color: contentColor,
+                            size: widget.isMain ? 18.0 : (widget.size < 30 ? 11.0 : 13.0),
+                          ),
+                        if (widget.label.isNotEmpty)
+                          Text(
+                            widget.label,
+                            style: TextStyle(
+                              color: contentColor,
+                              fontSize: widget.isMain ? 8.5 : (widget.size < 30 ? 5.5 : 6.5),
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
@@ -395,8 +520,14 @@ class _LandscapeLeftControlState extends State<LandscapeLeftControl> {
 class LandscapeRightControl extends StatelessWidget {
   final Function(GameAction) onAction;
   final ControllerTheme theme;
+  final bool isShieldActive;
 
-  const LandscapeRightControl({Key? key, required this.onAction, required this.theme}) : super(key: key);
+  const LandscapeRightControl({
+    Key? key,
+    required this.onAction,
+    required this.theme,
+    this.isShieldActive = false,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -422,6 +553,8 @@ class LandscapeRightControl extends StatelessWidget {
               icon: Icons.shield,
               size: 24,
               theme: Arcade3DTheme.silver,
+              isPulsing: isShieldActive,
+              pulseGlowColor: const Color(0xFF00E5FF),
             ),
           ),
           Positioned(
@@ -475,7 +608,14 @@ class LandscapeRightControl extends StatelessWidget {
 class MobaTouchController extends StatefulWidget {
   final Function(GameAction) onAction;
   final VoidCallback? onOpenMap;
-  const MobaTouchController({Key? key, required this.onAction, this.onOpenMap}) : super(key: key);
+  final bool isShieldActive;
+
+  const MobaTouchController({
+    Key? key,
+    required this.onAction,
+    this.onOpenMap,
+    this.isShieldActive = false,
+  }) : super(key: key);
 
   @override
   State<MobaTouchController> createState() => _MobaTouchControllerState();
@@ -625,6 +765,8 @@ class _MobaTouchControllerState extends State<MobaTouchController> {
                             icon: Icons.shield,
                             theme: Arcade3DTheme.silver,
                             size: 39,
+                            isPulsing: widget.isShieldActive,
+                            pulseGlowColor: const Color(0xFF00E5FF),
                           ),
                           Arcade3DButton(
                             onTap: () => widget.onAction(GameAction.specialAttack),
@@ -673,7 +815,14 @@ class _MobaTouchControllerState extends State<MobaTouchController> {
 class VirtualDualShockController extends StatefulWidget {
   final Function(GameAction) onAction;
   final VoidCallback? onOpenMap;
-  const VirtualDualShockController({Key? key, required this.onAction, this.onOpenMap}) : super(key: key);
+  final bool isShieldActive;
+
+  const VirtualDualShockController({
+    Key? key,
+    required this.onAction,
+    this.onOpenMap,
+    this.isShieldActive = false,
+  }) : super(key: key);
 
   @override
   State<VirtualDualShockController> createState() => _VirtualDualShockControllerState();
@@ -799,6 +948,8 @@ class _VirtualDualShockControllerState extends State<VirtualDualShockController>
                   icon: Icons.shield,
                   size: 26,
                   theme: Arcade3DTheme.silver,
+                  isPulsing: widget.isShieldActive,
+                  pulseGlowColor: const Color(0xFF00E5FF),
                 ),
               ],
             ),
@@ -817,6 +968,8 @@ class _VirtualDualShockControllerState extends State<VirtualDualShockController>
                       label: '△',
                       size: 25,
                       theme: Arcade3DTheme.silver,
+                      isPulsing: widget.isShieldActive,
+                      pulseGlowColor: const Color(0xFF00E5FF),
                     ),
                   ),
                   Positioned(

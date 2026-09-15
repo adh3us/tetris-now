@@ -1659,6 +1659,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
           opacity: _controllerOpacity,
           isVisible: _isControllerVisible,
           onOpenMap: _cycleArena,
+          isShieldActive: _engine.isShieldActive,
           onToggleTheme: () {
             setState(() {
               _controllerTheme = _controllerTheme == ControllerTheme.dualshock
