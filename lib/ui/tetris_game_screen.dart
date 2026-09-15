@@ -1340,7 +1340,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       autofocus: true,
       onKeyEvent: _handleKeyEvent,
       child: Scaffold(
-        backgroundColor: const Color(0xFF080A0F),
+        backgroundColor: const Color(0xFF151820), // Carcasa gris oscuro texturizado mate de arcade
         body: SafeArea(
           child: _buildPortraitLayout(),
         ),
@@ -1684,38 +1684,55 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
   Widget _buildCombatStatusBar() {
     final myHp = _engine.currentHp;
     final myHpRatio = (myHp / 100.0).clamp(0.0, 1.0);
-    final myHpColor = myHp >= 60 ? const Color(0xFF00D26A) : (myHp >= 30 ? const Color(0xFFF59E0B) : const Color(0xFFEF4444));
+    // HP propio en Amarillo Citrino brillante
+    const myHpColor = Color(0xFFFACC15);
 
     final oppHpRatio = (_opponentHp / 100.0).clamp(0.0, 1.0);
-    final oppHpColor = _opponentHp >= 60 ? const Color(0xFF00E5FF) : (_opponentHp >= 30 ? const Color(0xFFF59E0B) : const Color(0xFFEF4444));
+    // HP del rival en Rojo Neón intenso
+    const oppHpColor = Color(0xFFFF1744);
 
     return Container(
-      height: 20,
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      height: 22,
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: const Color(0xFF161B22),
-        borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: const Color(0xFF30363D), width: 1),
+        color: const Color(0xFF0F1118),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFF2B3144), width: 1.2),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black54,
+            offset: Offset(0, 2),
+            blurRadius: 4,
+          ),
+        ],
       ),
       child: Row(
         children: [
-          // Tu Barra de Vida (HP)
+          // Tu Barra de Vida (HP) - Amarillo Citrino
           Expanded(
             child: Row(
               children: [
-                const Icon(Icons.favorite, size: 11, color: Color(0xFFEF4444)),
+                const Icon(Icons.favorite, size: 11, color: Color(0xFFFACC15)),
                 const SizedBox(width: 3),
-                Text('HP: $myHp', style: TextStyle(color: myHpColor, fontSize: 8.5, fontWeight: FontWeight.w900)),
-                const SizedBox(width: 4),
+                Text(
+                  'HP: $myHp',
+                  style: const TextStyle(
+                    color: myHpColor,
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(width: 5),
                 Expanded(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(2),
                     child: LinearProgressIndicator(
                       value: myHpRatio,
-                      backgroundColor: const Color(0xFF21262D),
-                      valueColor: AlwaysStoppedAnimation<Color>(myHpColor),
-                      minHeight: 4,
+                      backgroundColor: const Color(0xFF262010),
+                      valueColor: const AlwaysStoppedAnimation<Color>(myHpColor),
+                      minHeight: 4.5,
                     ),
                   ),
                 ),
@@ -1725,7 +1742,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
 
           if (widget.matchId != null) ...[
             const SizedBox(width: 10),
-            // Barra de Vida del Rival (1v1)
+            // Barra de Vida del Rival (1v1) - Rojo Neón
             Expanded(
               child: Row(
                 children: [
@@ -1734,16 +1751,24 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
                       borderRadius: BorderRadius.circular(2),
                       child: LinearProgressIndicator(
                         value: oppHpRatio,
-                        backgroundColor: const Color(0xFF21262D),
-                        valueColor: AlwaysStoppedAnimation<Color>(oppHpColor),
-                        minHeight: 4,
+                        backgroundColor: const Color(0xFF261014),
+                        valueColor: const AlwaysStoppedAnimation<Color>(oppHpColor),
+                        minHeight: 4.5,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 4),
-                  Text('RIVAL: $_opponentHp', style: TextStyle(color: oppHpColor, fontSize: 8.5, fontWeight: FontWeight.w900)),
+                  const SizedBox(width: 5),
+                  Text(
+                    'RIVAL: $_opponentHp',
+                    style: const TextStyle(
+                      color: oppHpColor,
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
                   const SizedBox(width: 3),
-                  const Icon(Icons.flash_on_rounded, size: 11, color: Color(0xFFFFD700)),
+                  const Icon(Icons.flash_on_rounded, size: 11, color: Color(0xFFFF1744)),
                 ],
               ),
             ),
@@ -2120,19 +2145,21 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
     return GestureDetector(
       onTap: _handleSpecialAttack,
       child: Container(
-        height: 20,
-        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 1.5),
+        height: 22,
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
-          color: const Color(0xFF161B22),
-          borderRadius: BorderRadius.circular(5),
+          color: const Color(0xFF0F1118),
+          borderRadius: BorderRadius.circular(6),
           border: Border.all(
-            color: bars > 0 ? activeColor.withOpacity(0.85) : const Color(0xFF30363D),
-            width: bars > 0 ? 1.2 : 0.8,
+            color: bars > 0 ? activeColor.withOpacity(0.9) : const Color(0xFF2B3144),
+            width: bars > 0 ? 1.2 : 1.0,
           ),
-          boxShadow: bars > 0
-              ? [BoxShadow(color: activeColor.withOpacity(0.35), blurRadius: 6)]
-              : null,
+          boxShadow: [
+            const BoxShadow(color: Colors.black54, offset: Offset(0, 1), blurRadius: 3),
+            if (bars > 0)
+              BoxShadow(color: activeColor.withOpacity(0.35), blurRadius: 6),
+          ],
         ),
         child: Row(
           children: [
@@ -2315,12 +2342,30 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       },
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: const Color(0xFF30363D), width: 1.8),
-          borderRadius: BorderRadius.circular(6),
-          boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 8)],
+          color: const Color(0xFF070B19), // Pantalla Central (CRT): Azul noche
+          borderRadius: BorderRadius.circular(8),
+          // Borde de neón violeta sutil
+          border: Border.all(
+            color: const Color(0xFFA855F7).withOpacity(0.85),
+            width: 2.0,
+          ),
+          boxShadow: [
+            // Resplandor neón violeta sutil
+            BoxShadow(
+              color: const Color(0xFFA855F7).withOpacity(0.35),
+              blurRadius: 12,
+              spreadRadius: 1,
+            ),
+            // Marco exterior hundido en la carcasa
+            const BoxShadow(
+              color: Colors.black87,
+              offset: Offset(0, 4),
+              blurRadius: 10,
+            ),
+          ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(6),
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -2336,6 +2381,15 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
                   shakeOffset: _shakeOffset,
                 ),
               ),
+              // Overlay sutil de scanlines y curvatura simulando monitor CRT viejo
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    size: Size(width, height),
+                    painter: const CrtScanlinesOverlayPainter(),
+                  ),
+                ),
+              ),
               if (_impactBannerText != null)
                 _buildCenterImpactBanner(),
             ],
@@ -2345,17 +2399,17 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
     );
   }
 
-    /// Tarjeta de Escudo compacta para la columna izquierda (debajo de LÍNEAS)
+    /// Tarjeta de Escudo compacta para la columna izquierda (debajo de LÍNEAS) - Hueco hundido
   Widget _buildShieldCard() {
     final bool isActive = _engine.isShieldActive;
     final int energy = _engine.defenseEnergy;
     final bool isReady = energy >= 5;
 
     final Color glowColor = isActive
-        ? const Color(0xFFFFD700)
+        ? const Color(0xFFFACC15)
         : isReady
-            ? const Color(0xFF00D26A)
-            : const Color(0xFF58A6FF);
+            ? const Color(0xFF00E5FF)
+            : const Color(0xFF38BDF8);
 
     return GestureDetector(
       onTap: () => _handleAction(GameAction.activateShield),
@@ -2363,15 +2417,25 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 3.0, horizontal: 2.0),
         decoration: BoxDecoration(
-          color: const Color(0xFF0F141C),
+          color: const Color(0xFF0A0D16), // Hueco hundido en la carcasa
           borderRadius: BorderRadius.circular(6),
           border: Border.all(
-            color: glowColor.withOpacity(isActive || isReady ? 0.9 : 0.4),
-            width: isActive ? 1.8 : 1.0,
+            color: glowColor.withOpacity(isActive || isReady ? 0.9 : 0.45),
+            width: isActive ? 1.5 : 1.0,
           ),
-          boxShadow: (isActive || isReady)
-              ? [BoxShadow(color: glowColor.withOpacity(0.40), blurRadius: 6, spreadRadius: 1)]
-              : null,
+          boxShadow: [
+            const BoxShadow(
+              color: Color(0xCC000000),
+              offset: Offset(1.5, 2.0),
+              blurRadius: 3.0,
+            ),
+            if (isActive || isReady)
+              BoxShadow(
+                color: glowColor.withOpacity(0.35),
+                blurRadius: 6,
+                spreadRadius: 1,
+              ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2380,7 +2444,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
               fit: BoxFit.scaleDown,
               child: Text(
                 'ESCUDO',
-                style: TextStyle(color: Color(0xFF8B949E), fontSize: 7.0, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                style: TextStyle(color: Color(0xFF38BDF8), fontSize: 7.0, fontWeight: FontWeight.w900, letterSpacing: 0.5),
               ),
             ),
             const SizedBox(height: 1.5),
@@ -2395,7 +2459,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
               child: Text(
                 isActive ? '${_engine.shieldSecondsRemaining}s' : '$energy/5',
                 style: TextStyle(
-                  color: isActive ? const Color(0xFFFFD700) : (isReady ? const Color(0xFF00D26A) : Colors.white),
+                  color: isActive ? const Color(0xFFFACC15) : (isReady ? const Color(0xFF00E5FF) : const Color(0xFFFACC15)),
                   fontSize: 9.5,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.5,
@@ -2412,7 +2476,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
                   height: 2.5,
                   margin: const EdgeInsets.symmetric(horizontal: 0.5),
                   decoration: BoxDecoration(
-                    color: filled ? (isActive ? const Color(0xFFFFD700) : const Color(0xFF00D26A)) : const Color(0xFF21262D),
+                    color: filled ? (isActive ? const Color(0xFFFACC15) : const Color(0xFF00E5FF)) : const Color(0xFF1E2333),
                     borderRadius: BorderRadius.circular(1),
                   ),
                 );
@@ -2424,27 +2488,68 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
     );
   }
 
+  /// Tarjeta de Panel Lateral (Hold, Next, Score, Hi-Score, Líneas) simulando un hueco hundido en el plástico
   Widget _buildCard({required String title, String? value, Widget? child}) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 2.0, vertical: 2.5),
+      padding: const EdgeInsets.symmetric(horizontal: 2.5, vertical: 3.0),
       decoration: BoxDecoration(
-        color: const Color(0xFF161B22),
-        borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: const Color(0xFF30363D)),
+        color: const Color(0xFF0A0D16), // Hueco hundido en el plástico de la carcasa
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: const Color(0xFF00E5FF).withOpacity(0.55), // Borde cian brillante
+          width: 1.0,
+        ),
+        boxShadow: [
+          // Sombra interior / inset simulado
+          const BoxShadow(
+            color: Color(0xCC000000),
+            offset: Offset(1.5, 2.0),
+            blurRadius: 3.0,
+          ),
+          BoxShadow(
+            color: const Color(0xFF00E5FF).withOpacity(0.08),
+            blurRadius: 4.0,
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           FittedBox(
             fit: BoxFit.scaleDown,
-            child: Text(title, style: const TextStyle(color: Color(0xFF8B949E), fontSize: 7.0, fontWeight: FontWeight.bold), maxLines: 1),
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: Color(0xFF38BDF8), // Título en cian brillante
+                fontSize: 7.0,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.4,
+              ),
+              maxLines: 1,
+            ),
           ),
           const SizedBox(height: 1.5),
           if (value != null)
             FittedBox(
               fit: BoxFit.scaleDown,
-              child: Text(value, style: const TextStyle(color: Colors.white, fontSize: 10.0, fontWeight: FontWeight.bold), maxLines: 1),
+              child: Text(
+                value,
+                style: const TextStyle(
+                  // PUNTOS, HI-SCORE, LÍNEAS en Amarillo Citrino brillante
+                  color: Color(0xFFFACC15),
+                  fontSize: 10.0,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.6,
+                  shadows: [
+                    Shadow(
+                      color: Color(0x66FACC15),
+                      blurRadius: 6,
+                    ),
+                  ],
+                ),
+                maxLines: 1,
+              ),
             )
           else if (child != null)
             child,
@@ -2452,6 +2557,40 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       ),
     );
   }
+}
+
+/// Overlay sutil de scanlines CRT y curvatura simulando un monitor de tubo recreativo de los 90
+class CrtScanlinesOverlayPainter extends CustomPainter {
+  const CrtScanlinesOverlayPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Líneas horizontales de barrido CRT semitransparentes
+    final linePaint = Paint()
+      ..color = const Color(0x15000000)
+      ..strokeWidth = 1.0;
+
+    for (double y = 0; y < size.height; y += 3.0) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), linePaint);
+    }
+
+    // Efecto de viñeteado / curvatura en los bordes del monitor CRT
+    final vignettePaint = Paint()
+      ..shader = RadialGradient(
+        center: Alignment.center,
+        radius: 0.95,
+        colors: [
+          Colors.transparent,
+          Colors.black.withOpacity(0.24),
+        ],
+        stops: const [0.78, 1.0],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), vignettePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 /// CustomPainter: Sistema Gráfico 3D Neón & Metálico (Fase D1)

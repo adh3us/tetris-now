@@ -41,32 +41,14 @@ class VirtualControllerWrapper extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Barra Compacta de Pausa (Optimizada para espacio máximo de pantalla)
+          // Barra Compacta de Pausa Arcade con pulsación física
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
             color: Colors.transparent,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                GestureDetector(
-                  onTap: () => onAction(GameAction.pause),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD29922).withOpacity(0.90),
-                      borderRadius: BorderRadius.circular(6),
-                      boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4)],
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.pause_rounded, size: 12, color: Colors.black),
-                        SizedBox(width: 3),
-                        Text('PAUSA', style: TextStyle(color: Colors.black, fontSize: 8.5, fontWeight: FontWeight.w900, letterSpacing: 0.8)),
-                      ],
-                    ),
-                  ),
-                ),
+                _ArcadePausePill(onTap: () => onAction(GameAction.pause)),
               ],
             ),
           ),
@@ -74,6 +56,223 @@ class VirtualControllerWrapper extends StatelessWidget {
               ? VirtualDualShockController(onAction: onAction, onOpenMap: onOpenMap)
               : MobaTouchController(onAction: onAction, onOpenMap: onOpenMap),
         ],
+      ),
+    );
+  }
+}
+
+/// Pastilla física estilo botón arcade para la Pausa
+class _ArcadePausePill extends StatefulWidget {
+  final VoidCallback onTap;
+  const _ArcadePausePill({Key? key, required this.onTap}) : super(key: key);
+
+  @override
+  State<_ArcadePausePill> createState() => _ArcadePausePillState();
+}
+
+class _ArcadePausePillState extends State<_ArcadePausePill> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (_) {
+        setState(() => _isPressed = true);
+        widget.onTap();
+      },
+      onPointerUp: (_) => setState(() => _isPressed = false),
+      onPointerCancel: (_) => setState(() => _isPressed = false),
+      behavior: HitTestBehavior.opaque,
+      child: Transform.translate(
+        offset: Offset(0, _isPressed ? 2.0 : 0.0),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFFFDE047), Color(0xFFCA8A04), Color(0xFF854D0E)],
+            ),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: const Color(0xFFFEF08A), width: 1.0),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF583307),
+                offset: Offset(0, _isPressed ? 1.0 : 3.0),
+                blurRadius: 0.5,
+              ),
+            ],
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.pause_rounded, size: 12, color: Color(0xFF1E293B)),
+              SizedBox(width: 3),
+              Text(
+                'PAUSA',
+                style: TextStyle(
+                  color: Color(0xFF1E293B),
+                  fontSize: 8.5,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Acabados de materiales para los botones arcade
+enum Arcade3DTheme {
+  bronze, // Cobre / Naranja profundo para acciones principales (ROTAR, DROP, ATAQUE)
+  silver, // Plata brillante / Titanio para utilidades (HOLD, ESCUDO, MAPA)
+  dark,   // Carbón oscuro mate con bisel plata (#CBD5E1) para cruceta
+}
+
+/// Botón Arcade Físico 3D con sensación táctil de hundimiento (microswitch)
+class Arcade3DButton extends StatefulWidget {
+  final VoidCallback onTap;
+  final String label;
+  final IconData? icon;
+  final double size;
+  final bool isMain;
+  final Arcade3DTheme theme;
+  final BorderRadius? borderRadius;
+
+  const Arcade3DButton({
+    Key? key,
+    required this.onTap,
+    required this.label,
+    this.icon,
+    required this.size,
+    this.isMain = false,
+    this.theme = Arcade3DTheme.bronze,
+    this.borderRadius,
+  }) : super(key: key);
+
+  @override
+  State<Arcade3DButton> createState() => _Arcade3DButtonState();
+}
+
+class _Arcade3DButtonState extends State<Arcade3DButton> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isBronze = widget.theme == Arcade3DTheme.bronze;
+    final bool isSilver = widget.theme == Arcade3DTheme.silver;
+
+    // Gradientes de superficie metálica / acrílica
+    final List<Color> surfaceColors = isBronze
+        ? [const Color(0xFFFB923C), const Color(0xFFEA580C), const Color(0xFF9A3412)]
+        : isSilver
+            ? [const Color(0xFFF8FAFC), const Color(0xFFCBD5E1), const Color(0xFF94A3B8)]
+            : [const Color(0xFF272F3D), const Color(0xFF161B22), const Color(0xFF0D1117)];
+
+    // Sombra inferior biselada (labio 3D del switch)
+    final Color bevelColor = isBronze
+        ? const Color(0xFF6C2005)
+        : isSilver
+            ? const Color(0xFF475569)
+            : const Color(0xFF05080E);
+
+    // Borde exterior
+    final Color borderColor = isBronze
+        ? const Color(0xFFFFB74D)
+        : isSilver
+            ? const Color(0xFFFFFFFF)
+            : const Color(0xFFCBD5E1);
+
+    // Color del contenido (texto e icono)
+    final Color contentColor = isBronze
+        ? Colors.white
+        : isSilver
+            ? const Color(0xFF0F172A)
+            : const Color(0xFFCBD5E1);
+
+    final double shadowDepth = _isPressed ? 1.0 : (widget.isMain ? 4.0 : 3.0);
+    final double translateY = _isPressed ? (widget.isMain ? 3.0 : 2.0) : 0.0;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2.0, top: 1.0),
+      child: Listener(
+        onPointerDown: (_) {
+          setState(() => _isPressed = true);
+          widget.onTap();
+        },
+        onPointerUp: (_) => setState(() => _isPressed = false),
+        onPointerCancel: (_) => setState(() => _isPressed = false),
+        behavior: HitTestBehavior.opaque,
+        child: Transform.translate(
+          offset: Offset(0, translateY),
+          child: Container(
+            width: widget.size,
+            height: widget.size,
+            decoration: BoxDecoration(
+              shape: widget.borderRadius == null ? BoxShape.circle : BoxShape.rectangle,
+              borderRadius: widget.borderRadius,
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: surfaceColors,
+              ),
+              border: Border.all(
+                color: borderColor.withOpacity(isBronze ? 0.9 : 0.85),
+                width: widget.isMain ? 2.0 : 1.3,
+              ),
+              boxShadow: [
+                // Bisel 3D físico que se reduce al presionar
+                BoxShadow(
+                  color: bevelColor,
+                  offset: Offset(0, shadowDepth),
+                  blurRadius: 0.5,
+                ),
+                if (!_isPressed)
+                  BoxShadow(
+                    color: isBronze
+                        ? const Color(0x55EA580C)
+                        : isSilver
+                            ? const Color(0x33CBD5E1)
+                            : const Color(0x44000000),
+                    blurRadius: widget.isMain ? 5.0 : 2.5,
+                    offset: Offset(0, shadowDepth),
+                  ),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Padding(
+                padding: const EdgeInsets.all(2.5),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (widget.icon != null)
+                      Icon(
+                        widget.icon,
+                        color: contentColor,
+                        size: widget.isMain ? 18.0 : (widget.size < 30 ? 11.0 : 13.0),
+                      ),
+                    if (widget.label.isNotEmpty)
+                      Text(
+                        widget.label,
+                        style: TextStyle(
+                          color: contentColor,
+                          fontSize: widget.isMain ? 8.5 : (widget.size < 30 ? 5.5 : 6.5),
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -144,24 +343,35 @@ class _LandscapeLeftControlState extends State<LandscapeLeftControl> {
         height: 82,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: const Color(0xFF161B22).withOpacity(0.85),
-          border: Border.all(color: const Color(0xFF30363D), width: 1.5),
+          color: const Color(0xFF12161F),
+          border: Border.all(color: const Color(0xFFCBD5E1), width: 1.8),
+          boxShadow: const [
+            BoxShadow(color: Color(0x33CBD5E1), blurRadius: 4, spreadRadius: 1),
+            BoxShadow(color: Color(0x88000000), offset: Offset(0, 2), blurRadius: 3),
+          ],
         ),
         child: Stack(
           alignment: Alignment.center,
           children: [
-            const Icon(Icons.gamepad, color: Colors.white24, size: 24),
+            const Positioned(top: 5, child: Icon(Icons.arrow_drop_up, color: Color(0x66CBD5E1), size: 12)),
+            const Positioned(bottom: 5, child: Icon(Icons.arrow_drop_down, color: Color(0x66CBD5E1), size: 12)),
+            const Positioned(left: 5, child: Icon(Icons.arrow_left, color: Color(0x66CBD5E1), size: 12)),
+            const Positioned(right: 5, child: Icon(Icons.arrow_right, color: Color(0x66CBD5E1), size: 12)),
+            const Icon(Icons.gamepad, color: Color(0x22CBD5E1), size: 22),
             Transform.translate(
               offset: _stickOffset,
               child: Container(
-                width: 36,
-                height: 36,
+                width: 34,
+                height: 34,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: const RadialGradient(colors: [Color(0xFF58A6FF), Color(0xFF1F6FEB)]),
-                  boxShadow: [BoxShadow(color: const Color(0xFF58A6FF).withOpacity(0.5), blurRadius: 6)],
+                  gradient: const RadialGradient(colors: [Color(0xFF334155), Color(0xFF0F172A)]),
+                  border: Border.all(color: const Color(0xFFCBD5E1), width: 1.6),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x66000000), offset: Offset(0, 2), blurRadius: 3),
+                  ],
                 ),
-                child: const Icon(Icons.touch_app, color: Colors.white, size: 15),
+                child: const Icon(Icons.control_camera, color: Color(0xFFCBD5E1), size: 14),
               ),
             ),
           ],
@@ -171,18 +381,13 @@ class _LandscapeLeftControlState extends State<LandscapeLeftControl> {
   }
 
   Widget _buildDpadBtn(GameAction act, IconData icon) {
-    return Listener(
-      onPointerDown: (_) => widget.onAction(act),
-      child: Container(
-        width: 26,
-        height: 26,
-        decoration: BoxDecoration(
-          color: const Color(0xFF21262D),
-          border: Border.all(color: const Color(0xFF30363D)),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Icon(icon, color: Colors.white, size: 16),
-      ),
+    return Arcade3DButton(
+      onTap: () => widget.onAction(act),
+      label: '',
+      icon: icon,
+      size: 26,
+      theme: Arcade3DTheme.dark,
+      borderRadius: BorderRadius.circular(4),
     );
   }
 }
@@ -193,48 +398,6 @@ class LandscapeRightControl extends StatelessWidget {
 
   const LandscapeRightControl({Key? key, required this.onAction, required this.theme}) : super(key: key);
 
-  Widget _btn({
-    required VoidCallback onTap,
-    required String label,
-    required Color color,
-    required double size,
-    IconData? icon,
-    bool isMain = false,
-  }) {
-    return Listener(
-      onPointerDown: (_) => onTap(),
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [color.withOpacity(0.95), color.withOpacity(0.7)],
-          ),
-          border: Border.all(color: Colors.white.withOpacity(0.8), width: isMain ? 2 : 1),
-          boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: isMain ? 6 : 3)],
-        ),
-        alignment: Alignment.center,
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Padding(
-            padding: const EdgeInsets.all(2.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (icon != null) Icon(icon, color: Colors.white, size: isMain ? 17 : 11),
-                Text(label, style: TextStyle(color: Colors.white, fontSize: isMain ? 8 : 5.8, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -243,19 +406,72 @@ class LandscapeRightControl extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          _btn(onTap: () => onAction(GameAction.rotateCW), label: 'ROTAR', icon: Icons.refresh, color: const Color(0xFF5865F2), size: 42, isMain: true),
-          Positioned(top: 0, child: _btn(onTap: () => onAction(GameAction.activateShield), label: 'ESC', icon: Icons.shield, color: const Color(0xFF00D26A), size: 24)),
-          Positioned(left: 0, child: _btn(onTap: () => onAction(GameAction.hardDrop), label: 'DROP', color: const Color(0xFFF778BA), size: 24)),
-          Positioned(right: 0, child: _btn(onTap: () => onAction(GameAction.specialAttack), label: 'ATQ', icon: Icons.bolt, color: const Color(0xFF00E5FF), size: 24)),
-          Positioned(bottom: 0, child: _btn(onTap: () => onAction(GameAction.softDrop), label: 'DOWN', color: const Color(0xFF00E5FF), size: 24)),
-          Positioned(top: 2, left: 2, child: _btn(onTap: () => onAction(GameAction.hold), label: 'HOLD', color: const Color(0xFFA000F0), size: 22)),
+          Arcade3DButton(
+            onTap: () => onAction(GameAction.rotateCW),
+            label: 'ROTAR',
+            icon: Icons.refresh,
+            size: 42,
+            isMain: true,
+            theme: Arcade3DTheme.bronze,
+          ),
+          Positioned(
+            top: 0,
+            child: Arcade3DButton(
+              onTap: () => onAction(GameAction.activateShield),
+              label: 'ESC',
+              icon: Icons.shield,
+              size: 24,
+              theme: Arcade3DTheme.silver,
+            ),
+          ),
+          Positioned(
+            left: 0,
+            child: Arcade3DButton(
+              onTap: () => onAction(GameAction.hardDrop),
+              label: 'DROP',
+              icon: Icons.keyboard_double_arrow_down_rounded,
+              size: 24,
+              theme: Arcade3DTheme.bronze,
+            ),
+          ),
+          Positioned(
+            right: 0,
+            child: Arcade3DButton(
+              onTap: () => onAction(GameAction.specialAttack),
+              label: 'ATQ',
+              icon: Icons.bolt,
+              size: 24,
+              theme: Arcade3DTheme.bronze,
+            ),
+          ),
+          Positioned(
+            bottom: 0,
+            child: Arcade3DButton(
+              onTap: () => onAction(GameAction.softDrop),
+              label: 'DOWN',
+              icon: Icons.arrow_downward_rounded,
+              size: 24,
+              theme: Arcade3DTheme.bronze,
+            ),
+          ),
+          Positioned(
+            top: 2,
+            left: 2,
+            child: Arcade3DButton(
+              onTap: () => onAction(GameAction.hold),
+              label: 'HOLD',
+              icon: Icons.pan_tool_alt_rounded,
+              size: 22,
+              theme: Arcade3DTheme.silver,
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-/// Plantilla Vertical MOBA (Mobile Legends Style - Compacto y Zero Overflow)
+/// Plantilla Vertical MOBA Arcade (Acabados en Bronce y Plata con Pulsación Física 3D)
 class MobaTouchController extends StatefulWidget {
   final Function(GameAction) onAction;
   final VoidCallback? onOpenMap;
@@ -293,163 +509,167 @@ class _MobaTouchControllerState extends State<MobaTouchController> {
     }
   }
 
-  Widget _buildActionButton({
-    required VoidCallback onTap, required String label, required Color color, required double size,
-    IconData? icon, bool isMain = false,
-  }) {
-    return Listener(
-      onPointerDown: (_) => onTap(),
-      child: Container(
-        width: size, height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [color.withOpacity(0.95), color.withOpacity(0.65)],
-          ),
-          border: Border.all(color: Colors.white.withOpacity(0.8), width: isMain ? 2.0 : 1.2),
-          boxShadow: [BoxShadow(color: color.withOpacity(0.35), blurRadius: isMain ? 8 : 4)],
-        ),
-        alignment: Alignment.center,
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Padding(
-            padding: const EdgeInsets.all(2.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (icon != null) Icon(icon, color: Colors.white, size: isMain ? 20 : 12),
-                Text(label, style: TextStyle(color: Colors.white, fontSize: isMain ? 8.5 : 5.8, fontWeight: FontWeight.w900)),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
       height: 142,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
       decoration: const BoxDecoration(
-        color: Color(0xFF0F141C),
-        border: Border(top: BorderSide(color: Color(0xFF30363D), width: 1)),
+        color: Color(0xFF131620), // Carcasa gris oscuro mate
+        border: Border(
+          top: BorderSide(color: Color(0xFF282D3D), width: 2), // Separación de cabina arcade
+        ),
       ),
       child: Center(
         child: FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.center,
           child: SizedBox(
-            width: 320,
+            width: 326,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Stick analógico compacto
-          GestureDetector(
-            onPanUpdate: _onStickDrag,
-            onPanEnd: (_) => setState(() => _stickOffset = Offset.zero),
-            child: Container(
-              width: 95, height: 95,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF161B22).withOpacity(0.85),
-                border: Border.all(color: const Color(0xFF30363D), width: 1.5),
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  const Icon(Icons.gamepad, color: Colors.white24, size: 24),
-                  Transform.translate(
-                    offset: _stickOffset,
-                    child: Container(
-                      width: 38, height: 38,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(colors: [Color(0xFF58A6FF), Color(0xFF1F6FEB)]),
-                      ),
-                      child: const Icon(Icons.touch_app, color: Colors.white, size: 16),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // BOTÓN DE MAPA / ARENA CENTRADO ENTRE EL CURSOR Y LOS BOTONES
-          GestureDetector(
-            onTap: widget.onOpenMap,
-            child: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const RadialGradient(
-                  colors: [Color(0xFF818CF8), Color(0xFF4F46E5), Color(0xFF312E81)],
-                ),
-                border: Border.all(color: const Color(0xFFA5B4FC), width: 1.8),
-                boxShadow: const [
-                  BoxShadow(color: Color(0x666366F1), blurRadius: 10, spreadRadius: 1),
-                ],
-              ),
-              child: const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.map_rounded, color: Colors.white, size: 19),
-                  Text(
-                    'MAPA',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 7.0,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // Botonera 3x2 Simil Arcade (Mismo tamaño para todos, Cero Overflow)
-          SizedBox(
-            width: 146,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Fila Superior (3 botones): HOLD, ESCUDO (Verde), ATAQUE (Cyan)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildActionButton(onTap: () => widget.onAction(GameAction.hold), label: 'HOLD', icon: Icons.pan_tool_alt_rounded, color: const Color(0xFFA000F0), size: 40),
-                    _buildActionButton(onTap: () => widget.onAction(GameAction.activateShield), label: 'ESCUDO', icon: Icons.shield, color: const Color(0xFF00D26A), size: 40),
-                    _buildActionButton(onTap: () => widget.onAction(GameAction.specialAttack), label: 'ATAQUE', icon: Icons.bolt, color: const Color(0xFF00E5FF), size: 40),
-                  ],
+                // Stick analógico / cruceta arcade en tonos oscuros con borde plata (#CBD5E1)
+                GestureDetector(
+                  onPanUpdate: _onStickDrag,
+                  onPanEnd: (_) => setState(() => _stickOffset = Offset.zero),
+                  child: Container(
+                    width: 95,
+                    height: 95,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF12161F),
+                      border: Border.all(color: const Color(0xFFCBD5E1), width: 2.0),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x33CBD5E1),
+                          blurRadius: 6,
+                          spreadRadius: 1,
+                        ),
+                        BoxShadow(
+                          color: Color(0xAA000000),
+                          offset: Offset(0, 3),
+                          blurRadius: 3,
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        const Positioned(top: 6, child: Icon(Icons.arrow_drop_up, color: Color(0x66CBD5E1), size: 14)),
+                        const Positioned(bottom: 6, child: Icon(Icons.arrow_drop_down, color: Color(0x66CBD5E1), size: 14)),
+                        const Positioned(left: 6, child: Icon(Icons.arrow_left, color: Color(0x66CBD5E1), size: 14)),
+                        const Positioned(right: 6, child: Icon(Icons.arrow_right, color: Color(0x66CBD5E1), size: 14)),
+                        const Icon(Icons.gamepad, color: Color(0x22CBD5E1), size: 24),
+                        Transform.translate(
+                          offset: _stickOffset,
+                          child: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const RadialGradient(
+                                colors: [Color(0xFF334155), Color(0xFF0F172A)],
+                              ),
+                              border: Border.all(color: const Color(0xFFCBD5E1), width: 1.8),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x88000000),
+                                  offset: Offset(0, 3),
+                                  blurRadius: 3,
+                                ),
+                                BoxShadow(
+                                  color: Color(0x44CBD5E1),
+                                  blurRadius: 4,
+                                ),
+                              ],
+                            ),
+                            child: const Icon(Icons.control_camera, color: Color(0xFFCBD5E1), size: 16),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 6),
-                // Fila Inferior (2 botones): ROTAR CW (Principal), DROP
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildActionButton(onTap: () => widget.onAction(GameAction.rotateCW), label: '↻ ROTAR', icon: Icons.refresh, color: const Color(0xFF5865F2), size: 42, isMain: true),
-                    _buildActionButton(onTap: () => widget.onAction(GameAction.hardDrop), label: 'DROP', icon: Icons.keyboard_double_arrow_down_rounded, color: const Color(0xFFF778BA), size: 42),
-                  ],
+
+                // BOTÓN DE MAPA / ARENA CENTRADO CON ACABADO EN PLATA Y PULSACIÓN ARCADE
+                Arcade3DButton(
+                  onTap: widget.onOpenMap ?? () {},
+                  label: 'MAPA',
+                  icon: Icons.map_rounded,
+                  size: 42,
+                  theme: Arcade3DTheme.silver,
+                ),
+
+                // Botonera Simil Arcade (Acabados Bronce y Plata, Cero Overflow)
+                SizedBox(
+                  width: 146,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Fila Superior (3 botones): HOLD (Plata), ESCUDO (Plata), ATAQUE (Bronce)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          Arcade3DButton(
+                            onTap: () => widget.onAction(GameAction.hold),
+                            label: 'HOLD',
+                            icon: Icons.pan_tool_alt_rounded,
+                            theme: Arcade3DTheme.silver,
+                            size: 39,
+                          ),
+                          Arcade3DButton(
+                            onTap: () => widget.onAction(GameAction.activateShield),
+                            label: 'ESCUDO',
+                            icon: Icons.shield,
+                            theme: Arcade3DTheme.silver,
+                            size: 39,
+                          ),
+                          Arcade3DButton(
+                            onTap: () => widget.onAction(GameAction.specialAttack),
+                            label: 'ATAQUE',
+                            icon: Icons.bolt,
+                            theme: Arcade3DTheme.bronze,
+                            size: 39,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      // Fila Inferior (2 botones): ROTAR CW (Principal, Bronce), DROP (Bronce)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          Arcade3DButton(
+                            onTap: () => widget.onAction(GameAction.rotateCW),
+                            label: '↻ ROTAR',
+                            icon: Icons.refresh,
+                            theme: Arcade3DTheme.bronze,
+                            size: 45,
+                            isMain: true,
+                          ),
+                          Arcade3DButton(
+                            onTap: () => widget.onAction(GameAction.hardDrop),
+                            label: 'DROP',
+                            icon: Icons.keyboard_double_arrow_down_rounded,
+                            theme: Arcade3DTheme.bronze,
+                            size: 45,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
-        ],
+        ),
       ),
-    ),
-  ),
-),
     );
   }
 }
 
-/// Plantilla Vertical DualShock con Stick Analógico y Botones PS
+/// Plantilla Vertical DualShock Arcade
 class VirtualDualShockController extends StatefulWidget {
   final Function(GameAction) onAction;
   final VoidCallback? onOpenMap;
@@ -487,45 +707,41 @@ class _VirtualDualShockControllerState extends State<VirtualDualShockController>
     }
   }
 
-  Widget _buildButton({
-    required VoidCallback onTap, required Widget child, required double size,
-    Color backgroundColor = const Color(0xFF212121), BorderRadius? borderRadius,
-  }) {
-    return Listener(
-      onPointerDown: (_) => onTap(),
-      child: Container(
-        width: size, height: size,
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: borderRadius ?? BorderRadius.circular(size / 2),
-          border: Border.all(color: const Color(0xFF111111), width: 1.2),
-        ),
-        alignment: Alignment.center,
-        child: child,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
       height: 142,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       decoration: const BoxDecoration(
-        color: Color(0xFFE0E0E0),
+        color: Color(0xFF131620), // Carcasa mate
         borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+        border: Border(top: BorderSide(color: Color(0xFF282D3D), width: 2)),
       ),
       child: Stack(
         children: [
           Positioned(
-            top: 0, left: 4,
-            child: _buildButton(onTap: () => widget.onAction(GameAction.hold), size: 44, borderRadius: BorderRadius.circular(6), backgroundColor: const Color(0xFF263238), child: const Text('L1 (Hold)', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold))),
+            top: 2, left: 4,
+            child: Arcade3DButton(
+              onTap: () => widget.onAction(GameAction.hold),
+              label: 'L1 (Hold)',
+              icon: Icons.pan_tool_alt_rounded,
+              size: 42,
+              borderRadius: BorderRadius.circular(6),
+              theme: Arcade3DTheme.silver,
+            ),
           ),
           Positioned(
-            top: 0, right: 4,
-            child: _buildButton(onTap: () => widget.onAction(GameAction.hardDrop), size: 44, borderRadius: BorderRadius.circular(6), backgroundColor: const Color(0xFF263238), child: const Text('R1 (Drop)', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold))),
+            top: 2, right: 4,
+            child: Arcade3DButton(
+              onTap: () => widget.onAction(GameAction.hardDrop),
+              label: 'R1 (Drop)',
+              icon: Icons.keyboard_double_arrow_down_rounded,
+              size: 42,
+              borderRadius: BorderRadius.circular(6),
+              theme: Arcade3DTheme.bronze,
+            ),
           ),
-          // Stick analógico DualShock fluido (Reemplazo moderno de la cruceta)
+          // Stick analógico arcade con borde plata (#CBD5E1)
           Positioned(
             bottom: 4, left: 8,
             child: GestureDetector(
@@ -535,23 +751,28 @@ class _VirtualDualShockControllerState extends State<VirtualDualShockController>
                 width: 84, height: 84,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFF212121),
-                  border: Border.all(color: const Color(0xFF424242), width: 1.5),
+                  color: const Color(0xFF12161F),
+                  border: Border.all(color: const Color(0xFFCBD5E1), width: 1.8),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x33CBD5E1), blurRadius: 4),
+                    BoxShadow(color: Color(0x88000000), offset: Offset(0, 2), blurRadius: 3),
+                  ],
                 ),
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    const Icon(Icons.gamepad, color: Colors.white24, size: 24),
+                    const Icon(Icons.gamepad, color: Color(0x22CBD5E1), size: 22),
                     Transform.translate(
                       offset: _stickOffset,
                       child: Container(
                         width: 36, height: 36,
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          gradient: RadialGradient(colors: [Color(0xFF616161), Color(0xFF1E1E1E)]),
-                          boxShadow: [BoxShadow(color: Colors.black45, blurRadius: 4)],
+                          gradient: const RadialGradient(colors: [Color(0xFF334155), Color(0xFF0F172A)]),
+                          border: Border.all(color: const Color(0xFFCBD5E1), width: 1.6),
+                          boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4)],
                         ),
-                        child: const Icon(Icons.touch_app, color: Colors.white, size: 14),
+                        child: const Icon(Icons.control_camera, color: Color(0xFFCBD5E1), size: 14),
                       ),
                     ),
                   ],
@@ -563,26 +784,22 @@ class _VirtualDualShockControllerState extends State<VirtualDualShockController>
             top: 10, left: 0, right: 0,
             child: Column(
               children: [
-                GestureDetector(
-                  onTap: widget.onOpenMap,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF263238),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.map_rounded, size: 10, color: Color(0xFF818CF8)),
-                        SizedBox(width: 2),
-                        Text('MAPA', style: TextStyle(color: Colors.white, fontSize: 7.5, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ),
+                Arcade3DButton(
+                  onTap: widget.onOpenMap ?? () {},
+                  label: 'MAPA',
+                  icon: Icons.map_rounded,
+                  size: 32,
+                  borderRadius: BorderRadius.circular(6),
+                  theme: Arcade3DTheme.silver,
                 ),
-                const SizedBox(height: 3),
-                _buildButton(onTap: () => widget.onAction(GameAction.activateShield), size: 24, backgroundColor: const Color(0xFFB0BEC5), child: const Text('G', style: TextStyle(color: Color(0xFF1A237E), fontWeight: FontWeight.bold, fontSize: 9.5))),
+                const SizedBox(height: 4),
+                Arcade3DButton(
+                  onTap: () => widget.onAction(GameAction.activateShield),
+                  label: 'ESC',
+                  icon: Icons.shield,
+                  size: 26,
+                  theme: Arcade3DTheme.silver,
+                ),
               ],
             ),
           ),
@@ -593,10 +810,42 @@ class _VirtualDualShockControllerState extends State<VirtualDualShockController>
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  Positioned(top: 0, child: _buildButton(onTap: () => widget.onAction(GameAction.activateShield), size: 25, child: const Text('△', style: TextStyle(color: Color(0xFF00E676), fontSize: 13, fontWeight: FontWeight.w900)))),
-                  Positioned(bottom: 0, child: _buildButton(onTap: () => widget.onAction(GameAction.rotateCW), size: 25, child: const Text('✕', style: TextStyle(color: Color(0xFF2979FF), fontSize: 13, fontWeight: FontWeight.w900)))),
-                  Positioned(left: 0, child: _buildButton(onTap: () => widget.onAction(GameAction.hardDrop), size: 25, child: const Text('▢', style: TextStyle(color: Color(0xFFF50057), fontSize: 13, fontWeight: FontWeight.w900)))),
-                  Positioned(right: 0, child: _buildButton(onTap: () => widget.onAction(GameAction.specialAttack), size: 25, child: const Text('⚡', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 13, fontWeight: FontWeight.w900)))),
+                  Positioned(
+                    top: 0,
+                    child: Arcade3DButton(
+                      onTap: () => widget.onAction(GameAction.activateShield),
+                      label: '△',
+                      size: 25,
+                      theme: Arcade3DTheme.silver,
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 0,
+                    child: Arcade3DButton(
+                      onTap: () => widget.onAction(GameAction.rotateCW),
+                      label: '✕',
+                      size: 25,
+                      theme: Arcade3DTheme.bronze,
+                    ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    child: Arcade3DButton(
+                      onTap: () => widget.onAction(GameAction.hardDrop),
+                      label: '▢',
+                      size: 25,
+                      theme: Arcade3DTheme.bronze,
+                    ),
+                  ),
+                  Positioned(
+                    right: 0,
+                    child: Arcade3DButton(
+                      onTap: () => widget.onAction(GameAction.specialAttack),
+                      label: '⚡',
+                      size: 25,
+                      theme: Arcade3DTheme.bronze,
+                    ),
+                  ),
                 ],
               ),
             ),
