@@ -222,6 +222,50 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
 
   double _screenFlashOpacity = 0.0;
 
+  // Feedback Visual: Alerta de Daño en CRT (parpadeo en rojo neón por 0.5s)
+  int _crtDamageFlashCount = 0;
+  Timer? _crtDamageFlashTimer;
+  int _lastMyHp = 100;
+
+  void _triggerDamageCrtFlash() {
+    _crtDamageFlashTimer?.cancel();
+    _crtDamageFlashCount = 6; // 3 destellos completos (on/off) en ~500ms
+    _crtDamageFlashTimer = Timer.periodic(const Duration(milliseconds: 80), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _crtDamageFlashCount--;
+        if (_crtDamageFlashCount <= 0) {
+          timer.cancel();
+        }
+      });
+    });
+  }
+
+  bool get _isCrtDamageFlashing => _crtDamageFlashCount > 0 && (_crtDamageFlashCount % 2 != 0);
+
+  // Feedback Visual: Fogonazo Citrino en PUNTOS y LÍNEAS al limpiar líneas o subir puntaje
+  bool _isLineScoreFlashing = false;
+  Timer? _lineScoreFlashTimer;
+  int _lastScore = 0;
+  int _lastLinesCleared = 0;
+
+  void _triggerLineScoreFlash() {
+    _lineScoreFlashTimer?.cancel();
+    setState(() {
+      _isLineScoreFlashing = true;
+    });
+    _lineScoreFlashTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) {
+        setState(() {
+          _isLineScoreFlashing = false;
+        });
+      }
+    });
+  }
+
   // FASE D4: Arenas y Escenarios de Fondo Dinámicos
   ArenaTheme _currentArena = ArenaTheme.cyberpunk;
   double _ambientTime = 0.0;
@@ -346,6 +390,9 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       rows: 20,
       mode: widget.mode,
     );
+    _lastMyHp = _engine.currentHp;
+    _lastScore = _engine.score;
+    _lastLinesCleared = _engine.linesCleared;
 
     _ticker = createTicker((elapsed) {
       if (_lastElapsed == Duration.zero) {
@@ -363,7 +410,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
         _lastComboValue = _engine.combo;
       }
       if (_comboPulseScale > 1.0) {
-        _comboPulseScale = max(1.0, _comboPulseScale - dt * 2.8); // Desinflado elástico suave
+        _comboPulseScale = max(1.0, _comboPulseScale - dt * 2.5);
       }
 
       // 1. Actualizar Partículas VFX
@@ -395,6 +442,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       }
 
       _ambientTime += dt;
+
       if (_screenFlashOpacity > 0.0) {
         _screenFlashOpacity = max(0.0, _screenFlashOpacity - dt * 3.0);
       }
@@ -426,6 +474,20 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
         _processAttackResult(res);
       }
       _checkAndUpdateHiScore();
+
+      // Detección de daño recibido para parpadeo rojo neón en pantalla CRT
+      if (_engine.currentHp < _lastMyHp) {
+        _triggerDamageCrtFlash();
+      }
+      _lastMyHp = _engine.currentHp;
+
+      // Detección de aumento drástico de puntaje o líneas limpiadas para fogonazo citrino
+      if (_engine.score > _lastScore + 40 || _engine.linesCleared > _lastLinesCleared) {
+        _triggerLineScoreFlash();
+      }
+      _lastScore = _engine.score;
+      _lastLinesCleared = _engine.linesCleared;
+
       if (_engine.isGameOver) {
         _handleGameOver();
       }
@@ -1326,6 +1388,8 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
   void dispose() {
     _ticker.dispose();
     _shieldTimer?.cancel();
+    _crtDamageFlashTimer?.cancel();
+    _lineScoreFlashTimer?.cancel();
     _focusNode.dispose();
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -1569,11 +1633,19 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
                                     ),
                                   ),
                                   const SizedBox(height: 3),
-                                  _buildCard(title: 'SCORE', value: '${_engine.score}'),
+                                  _buildCard(
+                                    title: 'PUNTOS',
+                                    value: '${_engine.score}',
+                                    isHighlighting: true,
+                                  ),
                                   const SizedBox(height: 3),
                                   _buildCard(title: 'HI-SCORE', value: '$_hiScore'),
                                   const SizedBox(height: 3),
-                                  _buildCard(title: 'LÍNEAS', value: '${_engine.linesCleared}'),
+                                  _buildCard(
+                                    title: 'LÍNEAS',
+                                    value: '${_engine.linesCleared}',
+                                    isHighlighting: true,
+                                  ),
                                   const SizedBox(height: 3),
                                   _buildShieldCard(),
                                 ],
@@ -2345,17 +2417,21 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
         decoration: BoxDecoration(
           color: const Color(0xFF070B19), // Pantalla Central (CRT): Azul noche
           borderRadius: BorderRadius.circular(8),
-          // Borde de neón violeta sutil
+          // Borde de neón: violeta en reposo, rojo neón parpadeante por 0.5s al recibir daño
           border: Border.all(
-            color: const Color(0xFFA855F7).withOpacity(0.85),
-            width: 2.0,
+            color: _isCrtDamageFlashing
+                ? const Color(0xFFFF1744) // Rojo Neón de daño
+                : const Color(0xFFA855F7).withOpacity(0.85),
+            width: _isCrtDamageFlashing ? 2.5 : 2.0,
           ),
           boxShadow: [
-            // Resplandor neón violeta sutil
+            // Resplandor neón: violeta en reposo o destello rojo neón intenso
             BoxShadow(
-              color: const Color(0xFFA855F7).withOpacity(0.35),
-              blurRadius: 12,
-              spreadRadius: 1,
+              color: _isCrtDamageFlashing
+                  ? const Color(0xFFFF1744).withOpacity(0.95) // Resplandor rojo neón de impacto
+                  : const Color(0xFFA855F7).withOpacity(0.35),
+              blurRadius: _isCrtDamageFlashing ? 22 : 12,
+              spreadRadius: _isCrtDamageFlashing ? 3.5 : 1,
             ),
             // Marco exterior hundido en la carcasa
             const BoxShadow(
@@ -2490,16 +2566,26 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
   }
 
   /// Tarjeta de Panel Lateral (Hold, Next, Score, Hi-Score, Líneas) simulando un hueco hundido en el plástico
-  Widget _buildCard({required String title, String? value, Widget? child}) {
-    return Container(
+  Widget _buildCard({
+    required String title,
+    String? value,
+    Widget? child,
+    bool isHighlighting = false,
+  }) {
+    final bool flashActive = isHighlighting && _isLineScoreFlashing;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 2.5, vertical: 3.0),
       decoration: BoxDecoration(
-        color: const Color(0xFF0A0D16), // Hueco hundido en el plástico de la carcasa
+        color: flashActive ? const Color(0xFF221E0A) : const Color(0xFF0A0D16), // Hueco con destello citrino
         borderRadius: BorderRadius.circular(6),
         border: Border.all(
-          color: const Color(0xFF00E5FF).withOpacity(0.55), // Borde cian brillante
-          width: 1.0,
+          color: flashActive
+              ? const Color(0xFFFACC15) // Amarillo Citrino brillante
+              : const Color(0xFF00E5FF).withOpacity(0.55), // Borde cian normal
+          width: flashActive ? 1.8 : 1.0,
         ),
         boxShadow: [
           // Sombra interior / inset simulado
@@ -2508,10 +2594,22 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
             offset: Offset(1.5, 2.0),
             blurRadius: 3.0,
           ),
-          BoxShadow(
-            color: const Color(0xFF00E5FF).withOpacity(0.08),
-            blurRadius: 4.0,
-          ),
+          if (flashActive) ...[
+            BoxShadow(
+              color: const Color(0xFFFACC15).withOpacity(0.90), // Fogonazo Amarillo Citrino
+              blurRadius: 14.0,
+              spreadRadius: 2.5,
+            ),
+            const BoxShadow(
+              color: Colors.white,
+              blurRadius: 4.0,
+              spreadRadius: 1.0,
+            ),
+          ] else
+            BoxShadow(
+              color: const Color(0xFF00E5FF).withOpacity(0.08),
+              blurRadius: 4.0,
+            ),
         ],
       ),
       child: Column(
@@ -2521,8 +2619,8 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
             fit: BoxFit.scaleDown,
             child: Text(
               title,
-              style: const TextStyle(
-                color: Color(0xFF38BDF8), // Título en cian brillante
+              style: TextStyle(
+                color: flashActive ? const Color(0xFFFEF08A) : const Color(0xFF38BDF8),
                 fontSize: 7.0,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 0.4,
@@ -2536,16 +2634,16 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
               fit: BoxFit.scaleDown,
               child: Text(
                 value,
-                style: const TextStyle(
+                style: TextStyle(
                   // PUNTOS, HI-SCORE, LÍNEAS en Amarillo Citrino brillante
-                  color: Color(0xFFFACC15),
+                  color: flashActive ? Colors.white : const Color(0xFFFACC15),
                   fontSize: 10.0,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.6,
                   shadows: [
                     Shadow(
-                      color: Color(0x66FACC15),
-                      blurRadius: 6,
+                      color: flashActive ? const Color(0xFFFACC15) : const Color(0x66FACC15),
+                      blurRadius: flashActive ? 12 : 6,
                     ),
                   ],
                 ),
