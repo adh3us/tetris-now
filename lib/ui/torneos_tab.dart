@@ -95,6 +95,8 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
       SnackBar(content: Text(ok ? (aceptar ? 'Invitación aceptada' : 'Invitación rechazada') : 'No se pudo procesar la invitación')),
     );
     _loadData();
+  }
+
   Future<void> _confirmarSalir(TournamentModel t) async {
     final bool? confirmar = await showDialog<bool>(
       context: context,
