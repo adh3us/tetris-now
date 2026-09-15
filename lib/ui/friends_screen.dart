@@ -158,43 +158,99 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    if (widget.embedded) {
-      return Column(
-        children: [
-          _buildEloHeader(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-            child: Row(
-              children: [
-                const Expanded(child: Text('AMIGOS Y SOCIAL', style: TextStyle(letterSpacing: 1.2, fontWeight: FontWeight.w900, fontSize: 13, color: Colors.white))),
-                IconButton(
-                  icon: const Icon(Icons.person_add_rounded, color: Color(0xFF5865F2)),
-                  onPressed: _showAddFriendDialog,
+    final content = Column(
+      children: [
+        _buildEloHeader(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'AMIGOS Y SOCIAL',
+                  style: TextStyle(
+                    letterSpacing: 2.0,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13.5,
+                    color: Colors.white,
+                    shadows: [
+                      Shadow(
+                        color: const Color(0xFF00E5FF).withOpacity(0.55),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
                 ),
-              ],
-            ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F172A),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.4)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF00E5FF).withOpacity(0.12),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.person_add_rounded, color: Color(0xFF00E5FF), size: 20),
+                  onPressed: _showAddFriendDialog,
+                  tooltip: 'Agregar Amigo',
+                ),
+              ),
+            ],
           ),
-          Material(color: const Color(0xFF080A0F), child: _buildTabBar()),
-          Expanded(child: _buildTabView()),
-        ],
+        ),
+        Material(color: Colors.transparent, child: _buildTabBar()),
+        Expanded(child: _buildTabView()),
+      ],
+    );
+
+    if (widget.embedded) {
+      return Container(
+        color: const Color(0xFF070B19),
+        child: CustomPaint(
+          painter: const TetrisGridPainter(),
+          child: content,
+        ),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF080A0F),
+      backgroundColor: const Color(0xFF070B19),
       appBar: AppBar(
-        title: const Text('AMIGOS Y SOCIAL (GAMEROS)', style: TextStyle(letterSpacing: 1.5, fontWeight: FontWeight.w900, fontSize: 13.5)),
-        backgroundColor: const Color(0xFF0F141C),
+        title: Text(
+          'AMIGOS Y SOCIAL',
+          style: TextStyle(
+            letterSpacing: 2.0,
+            fontWeight: FontWeight.w900,
+            fontSize: 14,
+            color: Colors.white,
+            shadows: [
+              Shadow(
+                color: const Color(0xFF00E5FF).withOpacity(0.6),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+        ),
+        backgroundColor: const Color(0xFF0B1024),
         centerTitle: true,
+        elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.person_add_rounded, color: Color(0xFF5865F2)),
+            icon: const Icon(Icons.person_add_rounded, color: Color(0xFF00E5FF)),
             onPressed: _showAddFriendDialog,
           )
         ],
         bottom: _buildTabBar(),
       ),
-      body: _buildTabView(),
+      body: CustomPaint(
+        painter: const TetrisGridPainter(),
+        child: _buildTabView(),
+      ),
     );
   }
 
@@ -202,42 +258,113 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     if (_profile == null) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF161B22),
+        color: const Color(0xFF0B1024),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF4F46E5).withOpacity(0.5)),
+        border: Border.all(
+          color: const Color(0xFF00E5FF).withOpacity(0.35),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF00E5FF).withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          const Icon(Icons.account_circle, size: 32, color: Color(0xFF818CF8)),
-          const SizedBox(width: 10),
+          // Avatar cuadrado estilo Tetrimino con acento cian neón
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFF101735),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: const Color(0xFF00E5FF).withOpacity(0.6),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF00E5FF).withOpacity(0.2),
+                  blurRadius: 8,
+                ),
+              ],
+            ),
+            child: const Center(
+              child: Icon(Icons.person_rounded, size: 26, color: Color(0xFF00E5FF)),
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Nombre en cian vibrante
                 Text(
                   '${_profile!.clanTag != null ? '[${_profile!.clanTag}] ' : ''}${_profile!.displayName}',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13),
+                  style: const TextStyle(
+                    color: Color(0xFF00E5FF),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13.5,
+                    letterSpacing: 0.5,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
                 if (_profile!.username != null)
-                  Text(_profile!.username!, style: const TextStyle(color: Color(0xFF818CF8), fontSize: 10.5)),
+                  Text(
+                    '@${_profile!.username!}',
+                    style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 10.5, fontWeight: FontWeight.w500),
+                  ),
+                // Código en Amarillo Citrino brillante
                 if (_profile!.codigoJugador != null)
-                  Text('#${_profile!.codigoJugador}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
+                  Text(
+                    '#${_profile!.codigoJugador}',
+                    style: const TextStyle(
+                      color: Color(0xFFFACC15),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
               ],
             ),
           ),
+          // Badge Rango en Amarillo Citrino brillante con resplandor
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: const Color(0xFF4F46E5).withOpacity(0.35),
+              color: const Color(0x22FACC15),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF6366F1)),
+              border: Border.all(
+                color: const Color(0xFFFACC15).withOpacity(0.8),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFFACC15).withOpacity(0.18),
+                  blurRadius: 8,
+                ),
+              ],
             ),
-            child: Text(
-              'RANGO ${_profile!.tetrisElo}',
-              style: const TextStyle(color: Color(0xFFC7D2FE), fontSize: 12, fontWeight: FontWeight.w900),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.flash_on_rounded, size: 14, color: Color(0xFFFACC15)),
+                const SizedBox(width: 4),
+                Text(
+                  'RANGO ${_profile!.tetrisElo}',
+                  style: const TextStyle(
+                    color: Color(0xFFFACC15),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -248,8 +375,19 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   PreferredSizeWidget _buildTabBar() {
     return TabBar(
       controller: _tabController,
-      indicatorColor: const Color(0xFF5865F2),
-      labelColor: Colors.white,
+      indicatorColor: const Color(0xFF00E5FF),
+      indicatorWeight: 3.0,
+      labelColor: const Color(0xFF00E5FF),
+      unselectedLabelColor: const Color(0xFF64748B),
+      labelStyle: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 1.0,
+      ),
+      unselectedLabelStyle: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+      ),
       isScrollable: true,
       tabs: [
         Tab(text: 'MIS AMIGOS (${_friends.length})'),
@@ -278,15 +416,51 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.group_outlined, size: 54, color: Colors.white24),
-            const SizedBox(height: 12),
-            const Text('Aún no tienes amigos agregados en Gameros', style: TextStyle(color: Color(0xFF8B949E), fontSize: 13)),
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0B1024),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.2)),
+              ),
+              child: const Icon(Icons.group_outlined, size: 36, color: Color(0xFF00E5FF)),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Aún no tienes amigos agregados en Gameros',
+              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13, fontWeight: FontWeight.w500),
+            ),
             const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _showAddFriendDialog,
-              icon: const Icon(Icons.person_add_rounded, size: 16),
-              label: const Text('AGREGAR AMIGO'),
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5865F2)),
+            GestureDetector(
+              onTap: _showAddFriendDialog,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF2A85), Color(0xFFD80064)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFFF6EB4), width: 1.0),
+                  boxShadow: [
+                    const BoxShadow(color: Color(0xFF88003E), offset: Offset(0, 3)),
+                    BoxShadow(color: const Color(0xFFFF2A85).withOpacity(0.35), blurRadius: 8),
+                  ],
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.person_add_rounded, size: 16, color: Colors.white),
+                    SizedBox(width: 6),
+                    Text(
+                      'AGREGAR AMIGO',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1.0),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -300,41 +474,160 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
         final f = _friends[index];
 
         return Container(
-          margin: const EdgeInsets.only(bottom: 10),
+          margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF161B22),
+            color: const Color(0xFF0B1024),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF30363D)),
+            border: Border.all(
+              color: const Color(0xFF00E5FF).withOpacity(0.35),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF00E5FF).withOpacity(0.08),
+                blurRadius: 12,
+                spreadRadius: 0,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Row(
             children: [
+              // Avatar cuadrado tipo bloque Tetrimino
               Container(
                 width: 46,
                 height: 46,
-                decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF21262D)),
-                child: const Icon(Icons.account_circle, size: 34, color: Colors.white70),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF101735),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFF00E5FF).withOpacity(0.5),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF00E5FF).withOpacity(0.18),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.sports_esports_rounded,
+                    size: 26,
+                    color: Color(0xFF00E5FF),
+                  ),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(f.gamerTag, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13)),
-                    if (f.username != null)
-                      Text(f.username!, style: const TextStyle(color: Color(0xFF818CF8), fontSize: 10.5)),
-                    Text('RANGO ${f.tetrisElo}', style: const TextStyle(color: Color(0xFF8B949E), fontSize: 10)),
+                    // Nombre de usuario en cian vibrante
+                    Text(
+                      f.gamerTag,
+                      style: const TextStyle(
+                        color: Color(0xFF00E5FF),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13.5,
+                        letterSpacing: 0.5,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (f.username != null) ...[
+                      const SizedBox(height: 1),
+                      Text(
+                        '@${f.username}',
+                        style: const TextStyle(
+                          color: Color(0xFF38BDF8),
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    // Rango en Amarillo Citrino brillante
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0x22FACC15),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: const Color(0xFFFACC15).withOpacity(0.7),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.flash_on_rounded, size: 11, color: Color(0xFFFACC15)),
+                          const SizedBox(width: 3),
+                          Text(
+                            'RANGO ${f.tetrisElo}',
+                            style: const TextStyle(
+                              color: Color(0xFFFACC15),
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
-              ElevatedButton(
-                onPressed: () => _desafiar(f),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF5865F2),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              const SizedBox(width: 8),
+              // Botón Arcade "DESAFIAR" en Neón Magenta con bisel 3D
+              GestureDetector(
+                onTap: () => _desafiar(f),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFF2A85), Color(0xFFD80064)],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: const Color(0xFFFF6EB4),
+                      width: 1.0,
+                    ),
+                    boxShadow: [
+                      // Sombra inferior biselada para relieve 3D arcade
+                      const BoxShadow(
+                        color: Color(0xFF88003E),
+                        offset: Offset(0, 3),
+                        blurRadius: 0,
+                      ),
+                      // Resplandor neón magenta
+                      BoxShadow(
+                        color: const Color(0xFFFF2A85).withOpacity(0.35),
+                        blurRadius: 8,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.bolt_rounded, size: 14, color: Colors.white),
+                      SizedBox(width: 4),
+                      Text(
+                        'DESAFIAR',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: const Text('DESAFIAR', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -346,7 +639,10 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   Widget _buildRequestsList() {
     if (_requests.isEmpty) {
       return const Center(
-        child: Text('No tienes solicitudes pendientes de Gameros', style: TextStyle(color: Color(0xFF8B949E), fontSize: 12.5)),
+        child: Text(
+          'No tienes solicitudes pendientes de Gameros',
+          style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
+        ),
       );
     }
 
@@ -356,26 +652,62 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
       itemBuilder: (context, index) {
         final r = _requests[index];
         return Container(
-          margin: const EdgeInsets.only(bottom: 10),
+          margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF161B22),
+            color: const Color(0xFF0B1024),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF5865F2)),
+            border: Border.all(
+              color: const Color(0xFF00E5FF).withOpacity(0.35),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF00E5FF).withOpacity(0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
                 children: [
-                  const Icon(Icons.account_circle, size: 36, color: Color(0xFF5865F2)),
-                  const SizedBox(width: 10),
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF101735),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: const Color(0xFF00E5FF).withOpacity(0.5),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF00E5FF).withOpacity(0.15),
+                          blurRadius: 6,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.person_add_alt_1_rounded, size: 22, color: Color(0xFF00E5FF)),
+                  ),
+                  const SizedBox(width: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(r.senderGamerTag, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                      Text(
+                        r.senderGamerTag,
+                        style: const TextStyle(
+                          color: Color(0xFF00E5FF),
+                          fontWeight: FontWeight.w900,
+                          fontSize: 13.5,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                       const SizedBox(height: 2),
-                      const Text('Solicitud de amistad de Gameros', style: TextStyle(color: Color(0xFF8B949E), fontSize: 10)),
+                      const Text('Solicitud de amistad de Gameros', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10)),
                     ],
                   ),
                 ],
@@ -383,14 +715,14 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
               Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.check_circle_rounded, color: Color(0xFF00D26A), size: 28),
+                    icon: const Icon(Icons.check_circle_rounded, color: Color(0xFF00E5FF), size: 28),
                     onPressed: () async {
                       await _friendsService.respondToRequest(r.requestId, true);
                       _loadData();
                     },
                   ),
                   IconButton(
-                    icon: const Icon(Icons.cancel_rounded, color: Color(0xFFDA3633), size: 28),
+                    icon: const Icon(Icons.cancel_rounded, color: Color(0xFFFF2A85), size: 28),
                     onPressed: () async {
                       await _friendsService.respondToRequest(r.requestId, false);
                       _loadData();
@@ -408,7 +740,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   Widget _buildDesafiosList() {
     if (_desafios.isEmpty) {
       return const Center(
-        child: Text('No tienes desafíos activos', style: TextStyle(color: Color(0xFF8B949E), fontSize: 12.5)),
+        child: Text('No tienes desafíos activos', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5)),
       );
     }
     final myId = SupabaseConfig.client.auth.currentUser?.id;
@@ -476,19 +808,29 @@ class _DesafioCardState extends State<_DesafioCard> {
   Widget build(BuildContext context) {
     final progress = (_restante.inMilliseconds / 20000).clamp(0.0, 1.0);
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF161B22),
+        color: const Color(0xFF0B1024),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE3B341)),
+        border: Border.all(
+          color: const Color(0xFFFACC15).withOpacity(0.55),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFACC15).withOpacity(0.14),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.flash_on_rounded, color: Color(0xFFE3B341), size: 20),
+              const Icon(Icons.flash_on_rounded, color: Color(0xFFFACC15), size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -496,7 +838,22 @@ class _DesafioCardState extends State<_DesafioCard> {
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5),
                 ),
               ),
-              Text('${_restante.inSeconds}s', style: const TextStyle(color: Color(0xFFE3B341), fontWeight: FontWeight.w900)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0x28FACC15),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: const Color(0xFFFACC15).withOpacity(0.5)),
+                ),
+                child: Text(
+                  '${_restante.inSeconds}s',
+                  style: const TextStyle(
+                    color: Color(0xFFFACC15),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -505,8 +862,8 @@ class _DesafioCardState extends State<_DesafioCard> {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 6,
-              backgroundColor: const Color(0xFF30363D),
-              valueColor: AlwaysStoppedAnimation(progress > 0.3 ? const Color(0xFF00D26A) : const Color(0xFFDA3633)),
+              backgroundColor: const Color(0xFF101735),
+              valueColor: AlwaysStoppedAnimation(progress > 0.3 ? const Color(0xFF00E5FF) : const Color(0xFFFF2A85)),
             ),
           ),
           if (!widget.isMine) ...[
@@ -514,18 +871,68 @@ class _DesafioCardState extends State<_DesafioCard> {
             Row(
               children: [
                 Expanded(
-                  child: ElevatedButton(
-                    onPressed: widget.onAceptar,
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00D26A)),
-                    child: const Text('ACEPTAR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  child: GestureDetector(
+                    onTap: widget.onAceptar,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF00E5FF), Color(0xFF00B4D8)],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF38BDF8), width: 1),
+                        boxShadow: const [
+                          BoxShadow(color: Color(0xFF007799), offset: Offset(0, 3)),
+                          BoxShadow(color: Color(0x5500E5FF), blurRadius: 8),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'ACEPTAR',
+                          style: TextStyle(
+                            color: Color(0xFF070B19),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: ElevatedButton(
-                    onPressed: widget.onRechazar,
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDA3633)),
-                    child: const Text('RECHAZAR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  child: GestureDetector(
+                    onTap: widget.onRechazar,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFF2A85), Color(0xFFD80064)],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFFF6EB4), width: 1),
+                        boxShadow: const [
+                          BoxShadow(color: Color(0xFF88003E), offset: Offset(0, 3)),
+                          BoxShadow(color: Color(0x55FF2A85), blurRadius: 8),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'RECHAZAR',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -664,3 +1071,33 @@ class _AddFriendDialogState extends State<_AddFriendDialog> {
     );
   }
 }
+
+/// Pintor para patrón sutil de matriz de Tetris estilo Arcade Neón (5% opacidad)
+class TetrisGridPainter extends CustomPainter {
+  final Color gridColor;
+  final double cellSize;
+
+  const TetrisGridPainter({
+    this.gridColor = const Color(0x0E00E5FF),
+    this.cellSize = 24.0,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+
+    for (double x = 0; x <= size.width; x += cellSize) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (double y = 0; y <= size.height; y += cellSize) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+

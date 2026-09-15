@@ -114,11 +114,24 @@ class _HomeShellState extends State<HomeShell> {
     ];
 
     return Scaffold(
-      backgroundColor: const Color(0xFF07090E),
+      backgroundColor: const Color(0xFF070B19),
       appBar: AppBar(
+        backgroundColor: const Color(0xFF070B19),
+        elevation: 0,
         title: Text(
           _titles[_currentIndex],
-          style: const TextStyle(letterSpacing: 2.0, fontWeight: FontWeight.w900, fontSize: 13.5, color: Color(0xFFF1F5F9)),
+          style: const TextStyle(
+            letterSpacing: 2.0,
+            fontWeight: FontWeight.w900,
+            fontSize: 14,
+            color: Color(0xFF00E5FF),
+            shadows: [
+              Shadow(
+                color: Color(0x6600E5FF),
+                blurRadius: 8,
+              ),
+            ],
+          ),
         ),
         centerTitle: true,
         actions: [
@@ -136,20 +149,32 @@ class _HomeShellState extends State<HomeShell> {
         ],
       ),
       body: IndexedStack(index: _currentIndex, children: tabs),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: const Color(0xFF0D111A),
-        selectedItemColor: const Color(0xFF818CF8),
-        unselectedItemColor: const Color(0xFF64748B),
-        currentIndex: _currentIndex,
-        onTap: (i) => setState(() => _currentIndex = i),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.people_alt_rounded), label: 'Amigos'),
-          BottomNavigationBarItem(icon: Icon(Icons.meeting_room_rounded), label: 'Salas'),
-          BottomNavigationBarItem(icon: Icon(Icons.flash_on_rounded), label: 'Jugar'),
-          BottomNavigationBarItem(icon: Icon(Icons.emoji_events_rounded), label: 'Torneos'),
-          BottomNavigationBarItem(icon: Icon(Icons.storefront_rounded), label: 'Tienda'),
-        ],
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: Color(0x1A00E5FF),
+              width: 1.0,
+            ),
+          ),
+        ),
+        child: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: const Color(0xFF070B19),
+          selectedItemColor: const Color(0xFF00E5FF),
+          unselectedItemColor: const Color(0xFF64748B),
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.5),
+          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 11),
+          currentIndex: _currentIndex,
+          onTap: (i) => setState(() => _currentIndex = i),
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.people_alt_rounded), label: 'Amigos'),
+            BottomNavigationBarItem(icon: Icon(Icons.meeting_room_rounded), label: 'Salas'),
+            BottomNavigationBarItem(icon: Icon(Icons.flash_on_rounded), label: 'Jugar'),
+            BottomNavigationBarItem(icon: Icon(Icons.emoji_events_rounded), label: 'Torneos'),
+            BottomNavigationBarItem(icon: Icon(Icons.storefront_rounded), label: 'Tienda'),
+          ],
+        ),
       ),
     );
   }
@@ -195,44 +220,117 @@ class _DesafioIncomingDialogState extends State<_DesafioIncomingDialog> {
   Widget build(BuildContext context) {
     final progress = (_restante.inMilliseconds / 20000).clamp(0.0, 1.0);
     return Dialog(
-      backgroundColor: const Color(0xFF161B22),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: const BorderSide(color: Color(0xFFE3B341), width: 1.5)),
+      backgroundColor: const Color(0xFF0B1024),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+          color: const Color(0xFFFACC15).withOpacity(0.8),
+          width: 1.5,
+        ),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(22.0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.flash_on_rounded, color: Color(0xFFE3B341), size: 42),
-            const SizedBox(height: 10),
-            const Text('¡TE DESAFIARON A UN 1v1!', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15)),
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: const Color(0x22FACC15),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFACC15).withOpacity(0.6), width: 1.2),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFACC15).withOpacity(0.2),
+                    blurRadius: 10,
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.flash_on_rounded, color: Color(0xFFFACC15), size: 34),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              '¡TE DESAFIARON A UN 1v1!',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 15,
+                letterSpacing: 1.0,
+              ),
+            ),
             const SizedBox(height: 6),
-            Text('${_restante.inSeconds}s para responder', style: const TextStyle(color: Color(0xFF8B949E), fontSize: 12)),
+            Text(
+              '${_restante.inSeconds}s para responder',
+              style: const TextStyle(color: Color(0xFFFACC15), fontWeight: FontWeight.w800, fontSize: 12),
+            ),
             const SizedBox(height: 14),
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: LinearProgressIndicator(
                 value: progress,
                 minHeight: 8,
-                backgroundColor: const Color(0xFF30363D),
-                valueColor: AlwaysStoppedAnimation(progress > 0.3 ? const Color(0xFF00D26A) : const Color(0xFFDA3633)),
+                backgroundColor: const Color(0xFF101735),
+                valueColor: AlwaysStoppedAnimation(progress > 0.3 ? const Color(0xFF00E5FF) : const Color(0xFFFF2A85)),
               ),
             ),
             const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDA3633), padding: const EdgeInsets.symmetric(vertical: 12)),
-                    child: const Text('RECHAZAR', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(context).pop(false),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFF2A85), Color(0xFFD80064)],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFFF6EB4), width: 1),
+                        boxShadow: const [
+                          BoxShadow(color: Color(0xFF88003E), offset: Offset(0, 3)),
+                          BoxShadow(color: Color(0x55FF2A85), blurRadius: 6),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'RECHAZAR',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.8),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00D26A), padding: const EdgeInsets.symmetric(vertical: 12)),
-                    child: const Text('ACEPTAR', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(context).pop(true),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF00E5FF), Color(0xFF00B4D8)],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF38BDF8), width: 1),
+                        boxShadow: const [
+                          BoxShadow(color: Color(0xFF007799), offset: Offset(0, 3)),
+                          BoxShadow(color: Color(0x5500E5FF), blurRadius: 6),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'ACEPTAR',
+                          style: TextStyle(color: Color(0xFF070B19), fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.8),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ],

@@ -1093,34 +1093,56 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF161B22),
+        backgroundColor: const Color(0xFF0B1024),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
           side: BorderSide(
-            color: isWinner ? const Color(0xFF00D26A) : const Color(0xFFEF4444),
-            width: 2.2,
+            color: isWinner ? const Color(0xFF00E5FF) : const Color(0xFFFF1744),
+            width: 2.0,
           ),
         ),
         title: Column(
           children: [
-            Icon(
-              isWinner ? Icons.emoji_events_rounded : Icons.sentiment_very_dissatisfied_rounded,
-              color: isWinner ? const Color(0xFFFFD700) : const Color(0xFFEF4444),
-              size: 52,
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                color: const Color(0xFF101735),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: (isWinner ? const Color(0xFFFACC15) : const Color(0xFFFF1744)).withOpacity(0.7),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: (isWinner ? const Color(0xFFFACC15) : const Color(0xFFFF1744)).withOpacity(0.3),
+                    blurRadius: 12,
+                  ),
+                ],
+              ),
+              child: Icon(
+                isWinner ? Icons.emoji_events_rounded : Icons.sentiment_very_dissatisfied_rounded,
+                color: isWinner ? const Color(0xFFFACC15) : const Color(0xFFFF1744),
+                size: 34,
+              ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 12),
             Text(
-              isWinner ? 'GANADOR' : 'PERDEDOR',
+              isWinner ? '¡GANADOR!' : 'PERDEDOR',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: isWinner ? const Color(0xFF00D26A) : const Color(0xFFEF4444),
+                color: isWinner ? const Color(0xFF00E5FF) : const Color(0xFFFF1744),
                 fontWeight: FontWeight.w900,
-                fontSize: 24,
-                letterSpacing: 2.0,
+                fontSize: 26,
+                letterSpacing: 3.5,
                 shadows: [
                   Shadow(
-                    color: (isWinner ? const Color(0xFF00D26A) : const Color(0xFFEF4444)).withOpacity(0.6),
-                    blurRadius: 10,
+                    color: (isWinner ? const Color(0xFF00E5FF) : const Color(0xFFFF1744)).withOpacity(0.8),
+                    blurRadius: 16,
+                  ),
+                  Shadow(
+                    color: (isWinner ? const Color(0xFF00E5FF) : const Color(0xFFFF1744)).withOpacity(0.5),
+                    blurRadius: 8,
                   ),
                 ],
               ),
@@ -1131,45 +1153,96 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
                   ? '¡Victoria indiscutida! Has superado al rival.'
                   : 'Partida finalizada. ¡Sigue entrenando!',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Color(0xFF8B949E), fontSize: 11.5),
+              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5, fontWeight: FontWeight.w500),
             ),
           ],
         ),
         content: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: const Color(0xFF0D1117),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFF30363D)),
+            color: const Color(0xFF070B19),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.25), width: 1.0),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF00E5FF).withOpacity(0.06),
+                blurRadius: 8,
+              ),
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               _buildResultStatRow('Puntuación:', '${_engine.score} pts'),
-              const SizedBox(height: 5),
+              const SizedBox(height: 6),
               _buildResultStatRow('Líneas limpiadas:', '${_engine.linesCleared}'),
-              const SizedBox(height: 5),
+              const SizedBox(height: 6),
               _buildResultStatRow('Ataques enviados:', '${_engine.linesSent}'),
-              const SizedBox(height: 5),
-              _buildResultStatRow('Combo máximo alcanzado:', 'x${_engine.combo}'),
+              const SizedBox(height: 6),
+              _buildResultStatRow('Combo máximo:', 'x${_engine.combo}'),
             ],
           ),
         ),
         actions: [
           Center(
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                Navigator.of(context).pop();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isWinner ? const Color(0xFF238636) : const Color(0xFF5865F2),
-                padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 11),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: const Text(
-                'VOLVER AL LOBBY',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, letterSpacing: 1),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 6.0),
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  Navigator.of(context).pop();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isWinner
+                          ? const [Color(0xFF00E5FF), Color(0xFF00B4D8)]
+                          : const [Color(0xFFFF2A85), Color(0xFFD80064)],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isWinner ? const Color(0xFF38BDF8) : const Color(0xFFFF6EB4),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      // Sombra inferior biselada para relieve 3D arcade
+                      BoxShadow(
+                        color: isWinner ? const Color(0xFF007799) : const Color(0xFF88003E),
+                        offset: const Offset(0, 4),
+                        blurRadius: 0,
+                      ),
+                      // Resplandor neón
+                      BoxShadow(
+                        color: (isWinner ? const Color(0xFF00E5FF) : const Color(0xFFFF2A85)).withOpacity(0.35),
+                        blurRadius: 10,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.home_rounded,
+                        size: 16,
+                        color: isWinner ? const Color(0xFF070B19) : Colors.white,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'VOLVER AL LOBBY',
+                        style: TextStyle(
+                          color: isWinner ? const Color(0xFF070B19) : Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -1182,8 +1255,24 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(color: Color(0xFF8B949E), fontSize: 11.5)),
-        Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5)),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF94A3B8),
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.5,
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Color(0xFFFACC15),
+            fontWeight: FontWeight.w900,
+            fontSize: 12.5,
+            letterSpacing: 0.8,
+          ),
+        ),
       ],
     );
   }
