@@ -227,7 +227,112 @@ class TournamentService {
       });
       return true;
     } catch (_) {
+      try {
+        final user = supabase.auth.currentUser;
+        if (user != null) {
+          await supabase
+              .from('inscripciones_torneo')
+              .delete()
+              .eq('torneo_id', tournamentId)
+              .eq('usuario_id', user.id);
+          return true;
+        }
+      } catch (_) {}
       return false;
+    }
+  }
+
+  /// Consulta todos los torneos a los que el usuario logueado está registrado
+  /// (ya sea de forma individual o a través de sus clanes).
+  Future<List<TournamentModel>> getMyRegisteredTournaments() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return [];
+
+    try {
+      // 1. Obtener IDs de clanes activos del usuario
+      final List<String> clanIds = [];
+      try {
+        final myClans = await supabase
+            .from('miembros_clan')
+            .select('clan_id')
+            .eq('usuario_id', user.id)
+            .eq('estado', 'activo');
+        if (myClans is List && myClans.isNotEmpty) {
+          for (final c in myClans) {
+            final cid = c['clan_id'] as String?;
+            if (cid != null) clanIds.add(cid);
+          }
+        }
+      } catch (_) {}
+
+      // 2. Obtener inscripciones individuales
+      final List<dynamic> allInsc = [];
+      try {
+        final resUser = await supabase
+            .from('inscripciones_torneo')
+            .select('torneo_id, estado, torneos(id, nombre, formato, estado, fecha_inicio, tamano_equipo)')
+            .eq('usuario_id', user.id);
+        if (resUser is List) {
+          allInsc.addAll(resUser);
+        }
+      } catch (_) {}
+
+      // 3. Obtener inscripciones de clan si aplica
+      if (clanIds.isNotEmpty) {
+        try {
+          final resClan = await supabase
+              .from('inscripciones_torneo')
+              .select('torneo_id, estado, torneos(id, nombre, formato, estado, fecha_inicio, tamano_equipo)')
+              .inFilter('clan_id', clanIds);
+          if (resClan is List) {
+            allInsc.addAll(resClan);
+          }
+        } catch (_) {}
+      }
+
+      // 4. Mapear y deduplicar torneos
+      final Map<String, TournamentModel> mapResult = {};
+      final List<String> missingTorneoIds = [];
+
+      for (final row in allInsc) {
+        final rowState = row['estado'] as String?;
+        if (rowState != null && rowState == 'cancelada') continue;
+
+        if (row['torneos'] != null && row['torneos'] is Map) {
+          final tMap = Map<String, dynamic>.from(row['torneos'] as Map);
+          final t = TournamentModel.fromMap(tMap);
+          if (t.estado == 'inscripcion' || t.estado == 'en_curso') {
+            mapResult[t.id] = t;
+          }
+        } else if (row['torneo_id'] != null) {
+          final tid = row['torneo_id'] as String;
+          if (!mapResult.containsKey(tid) && !missingTorneoIds.contains(tid)) {
+            missingTorneoIds.add(tid);
+          }
+        }
+      }
+
+      // Fallback si la relación embebida torneos no vino poblada
+      if (missingTorneoIds.isNotEmpty) {
+        try {
+          final torneosRows = await supabase
+              .from('torneos')
+              .select('id, nombre, formato, estado, fecha_inicio, tamano_equipo')
+              .inFilter('id', missingTorneoIds);
+          if (torneosRows is List) {
+            for (final tr in torneosRows) {
+              final t = TournamentModel.fromMap(Map<String, dynamic>.from(tr));
+              if (t.estado == 'inscripcion' || t.estado == 'en_curso') {
+                mapResult[t.id] = t;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      return mapResult.values.toList();
+    } catch (_) {
+      return [];
     }
   }
 

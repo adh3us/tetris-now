@@ -519,10 +519,10 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
             _triggerImpactBanner('⚡ ¡VELOCIDAD x4!', sub: 'Caída acelerada (${duration}s)', color: const Color(0xFF38BDF8));
             _combatLog = '⚡ ¡Rival aceleró tu caída a x4 (${duration}s)!';
           } else if (tier == 4) {
-            _engine.receiveStarShower(10);
+            _engine.receiveStarShower(4);
             _audioService.play(TetrisSfx.damageReceived);
             _triggerScreenShake(intensity: 9.0, duration: 0.35);
-            _triggerImpactBanner('⭐ ¡LLUVIA DE ESTRELLAS! ⭐', sub: '10 estrellas fijas en tu pantalla', color: const Color(0xFFFBBF24));
+            _triggerImpactBanner('⭐ ¡LLUVIA DE ESTRELLAS! ⭐', sub: '4 estrellas fijas en tu pantalla', color: const Color(0xFFFBBF24));
             _combatLog = '⭐ ¡Lluvia de estrellas del rival! Elimínalas con líneas.';
           }
         });
@@ -1026,10 +1026,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
     if (widget.realtimeService != null && (widget.mode == GameMode.duel1v1 || widget.mode == GameMode.tournament)) {
       widget.realtimeService!.sendSpecialAttack(bars, duration: 20);
     } else {
-      // Modo Solitario / Pruebas locales
-      if (bars == 4) {
-        _engine.receiveStarShower(5);
-      }
+      // Modo Solitario / Pruebas locales: Los ataques son siempre para el rival, nunca sobre uno mismo
       _engine.score += bars * 1500;
       _checkAndUpdateHiScore();
     }

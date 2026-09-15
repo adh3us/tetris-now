@@ -13,6 +13,7 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
   final TournamentService _service = TournamentService();
   late TabController _tabController;
 
+  List<TournamentModel> _misRegistrados = [];
   List<TournamentModel> _individuales = [];
   List<TournamentModel> _equipos = [];
   List<TournamentInvitationModel> _invitaciones = [];
@@ -23,8 +24,14 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -33,8 +40,10 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
       final all = await _service.getTournaments();
       final invites = await _service.getMyInvitations();
       final clan = await _service.getClanLiderazgo();
+      final registered = await _service.getMyRegisteredTournaments();
       if (!mounted) return;
       setState(() {
+        _misRegistrados = registered;
         _individuales = all.where((t) => t.tipo == 'individual').toList();
         _equipos = all.where((t) => t.tipo == 'equipo').toList();
         _invitaciones = invites;
@@ -86,6 +95,65 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
       SnackBar(content: Text(ok ? (aceptar ? 'Invitación aceptada' : 'Invitación rechazada') : 'No se pudo procesar la invitación')),
     );
     _loadData();
+  Future<void> _confirmarSalir(TournamentModel t) async {
+    final bool? confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFFDA3633), width: 1.5),
+        ),
+        title: Row(
+          children: const [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFDA3633), size: 24),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '¿Salir del torneo?',
+                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          '¿Estás seguro de que deseas salir de "${t.nombre}"?\nSe cancelará tu inscripción en este torneo.',
+          style: const TextStyle(color: Color(0xFFC9D1D9), fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('CANCELAR', style: TextStyle(color: Color(0xFF8B949E))),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDA3633),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('SALIR DEL TORNEO', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true) {
+      final ok = await _service.cancelarInscripcion(t.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ok
+              ? 'Has salido de "${t.nombre}" exitosamente.'
+              : 'No se pudo cancelar la inscripción. Inténtalo de nuevo.'),
+          backgroundColor: ok ? const Color(0xFF00D26A) : const Color(0xFFDA3633),
+        ),
+      );
+      _loadData();
+    }
+  }
+
+  bool _isRegistered(String tournamentId) {
+    return _misRegistrados.any((t) => t.id == tournamentId);
   }
 
   @override
@@ -127,7 +195,10 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
             controller: _tabController,
             indicatorColor: const Color(0xFF5865F2),
             labelColor: Colors.white,
+            labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+            unselectedLabelColor: const Color(0xFF8B949E),
             tabs: [
+              Tab(text: 'MIS TORNEOS (${_misRegistrados.length})'),
               Tab(text: 'INDIVIDUAL (${_individuales.length})'),
               Tab(text: 'EQUIPOS (${_equipos.length})'),
             ],
@@ -139,6 +210,7 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
               : TabBarView(
                   controller: _tabController,
                   children: [
+                    _buildRegisteredList(_misRegistrados),
                     _buildList(_individuales),
                     _buildList(_equipos),
                   ],
@@ -195,6 +267,145 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
     );
   }
 
+  Widget _buildRegisteredList(List<TournamentModel> list) {
+    if (list.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _loadData,
+        child: ListView(
+          children: const [
+            SizedBox(height: 100),
+            Icon(Icons.emoji_events_outlined, color: Color(0xFF484F58), size: 48),
+            SizedBox(height: 12),
+            Center(
+              child: Text(
+                'No estás registrado en ningún torneo por ahora',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ),
+            SizedBox(height: 6),
+            Center(
+              child: Text(
+                'Explora las pestañas INDIVIDUAL y EQUIPOS para inscribirte.',
+                style: TextStyle(color: Color(0xFF8B949E), fontSize: 11),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(14),
+        itemCount: list.length,
+        itemBuilder: (context, index) {
+          final t = list[index];
+          final isEnCurso = t.estado == 'en_curso';
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF161B22),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isEnCurso ? const Color(0xFF00D26A) : const Color(0xFF5865F2),
+                width: 1.2,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.emoji_events_rounded,
+                      color: isEnCurso ? const Color(0xFFFFD700) : const Color(0xFF38BDF8),
+                      size: 26,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            t.nombre,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13.5),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: isEnCurso ? const Color(0x2E00D26A) : const Color(0x2E38BDF8),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  isEnCurso ? 'EN CURSO' : 'INSCRIPCIÓN ACTIVA',
+                                  style: TextStyle(
+                                    color: isEnCurso ? const Color(0xFF00D26A) : const Color(0xFF38BDF8),
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                t.tipo == 'equipo' ? '• Equipo/Clan' : '• Individual',
+                                style: const TextStyle(color: Color(0xFF8B949E), fontSize: 10),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (isEnCurso) ...[
+                      ElevatedButton.icon(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => TournamentBracketsScreen(tournamentId: t.id)),
+                        ),
+                        icon: const Icon(Icons.account_tree_rounded, size: 14),
+                        label: const Text('VER BRACKET', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1E293B),
+                          foregroundColor: const Color(0xFF38BDF8),
+                          side: const BorderSide(color: Color(0xFF0284C7)),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    OutlinedButton.icon(
+                      onPressed: () => _confirmarSalir(t),
+                      icon: const Icon(Icons.logout_rounded, size: 14, color: Color(0xFFFFA198)),
+                      label: const Text(
+                        'SALIR DEL TORNEO',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFFFA198)),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFDA3633)),
+                        backgroundColor: const Color(0x22DA3633),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildList(List<TournamentModel> list) {
     if (list.isEmpty) {
       return RefreshIndicator(
@@ -216,17 +427,25 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
         itemCount: list.length,
         itemBuilder: (context, index) {
           final t = list[index];
+          final bool registered = _isRegistered(t.id);
+
           return Container(
             margin: const EdgeInsets.only(bottom: 10),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: const Color(0xFF161B22),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF30363D)),
+              border: Border.all(
+                color: registered ? const Color(0xFF00D26A) : const Color(0xFF30363D),
+              ),
             ),
             child: Row(
               children: [
-                const Icon(Icons.emoji_events_rounded, color: Color(0xFFFFD700), size: 28),
+                Icon(
+                  Icons.emoji_events_rounded,
+                  color: registered ? const Color(0xFF00D26A) : const Color(0xFFFFD700),
+                  size: 28,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -234,12 +453,45 @@ class _TorneosTabState extends State<TorneosTab> with SingleTickerProviderStateM
                     children: [
                       Text(t.nombre, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13)),
                       const SizedBox(height: 2),
-                      Text(t.estado == 'en_curso' ? 'En curso' : 'Inscripción abierta',
-                          style: TextStyle(color: t.estado == 'en_curso' ? const Color(0xFF00D26A) : const Color(0xFF38BDF8), fontSize: 10.5)),
+                      Row(
+                        children: [
+                          Text(
+                            t.estado == 'en_curso' ? 'En curso' : 'Inscripción abierta',
+                            style: TextStyle(
+                              color: t.estado == 'en_curso' ? const Color(0xFF00D26A) : const Color(0xFF38BDF8),
+                              fontSize: 10.5,
+                            ),
+                          ),
+                          if (registered) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: const Color(0x2E00D26A),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                '✓ INSCRITO',
+                                style: TextStyle(color: Color(0xFF00D26A), fontSize: 9, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ],
                   ),
                 ),
-                if (t.estado == 'en_curso')
+                if (registered)
+                  OutlinedButton(
+                    onPressed: () => _confirmarSalir(t),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFDA3633)),
+                      backgroundColor: const Color(0x22DA3633),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    ),
+                    child: const Text('SALIR', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFFFA198))),
+                  )
+                else if (t.estado == 'en_curso')
                   ElevatedButton.icon(
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => TournamentBracketsScreen(tournamentId: t.id)),

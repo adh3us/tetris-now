@@ -66,12 +66,12 @@ class TetrisEngine {
     }
   }
 
-  /// Barra 4: Lluvia de estrellas fijas aleatorias sobre la grilla visible
-  void receiveStarShower([int count = 10]) {
+  /// Barra 4: Lluvia de estrellas fijas aleatorias sobre la grilla visible (exactamente 4 estrellas)
+  void receiveStarShower([int count = 4]) {
     if (isShieldActive || isGameOver) return;
     final startRow = max(0, rows - 16);
     int placed = 0;
-    for (int attempt = 0; attempt < 100 && placed < count; attempt++) {
+    for (int attempt = 0; attempt < 150 && placed < count; attempt++) {
       final r = startRow + _rng.nextInt(rows - startRow);
       final c = _rng.nextInt(cols);
       if (grid[r][c] == null) {
@@ -639,14 +639,31 @@ class TetrisEngine {
   Map<String, int> computeDropDistances() {
     final Map<String, int> distances = {};
     for (int x = 0; x < cols; x++) {
-      int emptyCount = 0;
-      for (int y = rows - 1; y >= 0; y--) {
-        if (grid[y][x] == null) {
-          emptyCount++;
-        } else {
-          if (emptyCount > 0) {
-            distances['${x}_${y}'] = emptyCount;
+      final starRows = <int>[];
+      for (int y = 0; y < rows; y++) {
+        if (grid[y][x]?.cubeType == CubeType.star) {
+          starRows.add(y);
+        }
+      }
+
+      int segBottom = rows - 1;
+      for (int i = starRows.length - 1; i >= -1; i--) {
+        final segTop = (i >= 0) ? (starRows[i] + 1) : 0;
+        if (segBottom >= segTop) {
+          int emptyCount = 0;
+          for (int y = segBottom; y >= segTop; y--) {
+            final cell = grid[y][x];
+            if (cell == null) {
+              emptyCount++;
+            } else if (cell.cubeType != CubeType.star) {
+              if (emptyCount > 0) {
+                distances['${x}_${y}'] = emptyCount;
+              }
+            }
           }
+        }
+        if (i >= 0) {
+          segBottom = starRows[i] - 1;
         }
       }
     }
@@ -656,15 +673,32 @@ class TetrisEngine {
   bool applyGravityCascade() {
     bool movedAny = false;
     for (int x = 0; x < cols; x++) {
-      int writeY = rows - 1;
-      for (int y = rows - 1; y >= 0; y--) {
-        if (grid[y][x] != null) {
-          if (y != writeY) {
-            grid[writeY][x] = grid[y][x];
-            grid[y][x] = null;
-            movedAny = true;
+      final starRows = <int>[];
+      for (int y = 0; y < rows; y++) {
+        if (grid[y][x]?.cubeType == CubeType.star) {
+          starRows.add(y);
+        }
+      }
+
+      int segBottom = rows - 1;
+      for (int i = starRows.length - 1; i >= -1; i--) {
+        final segTop = (i >= 0) ? (starRows[i] + 1) : 0;
+        if (segBottom >= segTop) {
+          int writeY = segBottom;
+          for (int y = segBottom; y >= segTop; y--) {
+            final cell = grid[y][x];
+            if (cell != null && cell.cubeType != CubeType.star) {
+              if (y != writeY) {
+                grid[writeY][x] = cell;
+                grid[y][x] = null;
+                movedAny = true;
+              }
+              writeY--;
+            }
           }
-          writeY--;
+        }
+        if (i >= 0) {
+          segBottom = starRows[i] - 1;
         }
       }
     }
@@ -676,17 +710,24 @@ class TetrisEngine {
     int goldLines = 0;
     int silverLines = 0;
 
+    final List<int> fullRows = [];
     for (int y = rows - 1; y >= 0; y--) {
       if (grid[y].every((cell) => cell != null)) {
-        cleared++;
+        fullRows.add(y);
         for (int x = 0; x < cols; x++) {
           final cell = grid[y][x]!;
           if (cell.cubeType == CubeType.gold) goldLines++;
           if (cell.cubeType == CubeType.silver) silverLines++;
         }
-        grid.removeAt(y);
-        grid.insert(0, List<Cell?>.generate(cols, (_) => null));
-        y++;
+      }
+    }
+
+    if (fullRows.isNotEmpty) {
+      cleared = fullRows.length;
+      for (final y in fullRows) {
+        for (int x = 0; x < cols; x++) {
+          grid[y][x] = null; // Fila limpiada; destruye estrella si estaba en esta fila
+        }
       }
     }
 
@@ -766,17 +807,24 @@ class TetrisEngine {
       hadLinesInPass = false;
       int clearedInPass = 0;
 
+      final List<int> fullRows = [];
       for (int y = rows - 1; y >= 0; y--) {
         if (grid[y].every((cell) => cell != null)) {
-          clearedInPass++;
+          fullRows.add(y);
           for (int x = 0; x < cols; x++) {
             final cell = grid[y][x]!;
             if (cell.cubeType == CubeType.gold) totalGoldLines++;
             if (cell.cubeType == CubeType.silver) totalSilverLines++;
           }
-          grid.removeAt(y);
-          grid.insert(0, List<Cell?>.generate(cols, (_) => null));
-          y++;
+        }
+      }
+
+      if (fullRows.isNotEmpty) {
+        clearedInPass = fullRows.length;
+        for (final y in fullRows) {
+          for (int x = 0; x < cols; x++) {
+            grid[y][x] = null; // Línea limpiada; destruye estrella si estaba en esta fila
+          }
         }
       }
 
