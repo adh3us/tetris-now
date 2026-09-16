@@ -19,6 +19,7 @@ class TetrisEngine {
   int linesCleared = 0;
   int linesSent = 0;
   int combo = 0;
+  int maxCombo = 0;
   double comboTimer = 0.0;
   static const double comboGraceTime = 3.0; // 3 segundos de gracia para combos
   int level = 1;
@@ -166,6 +167,7 @@ class TetrisEngine {
     linesCleared = 0;
     linesSent = 0;
     combo = 0;
+    maxCombo = 0;
     comboTimer = 0.0;
     level = 1;
     isGameOver = false;
@@ -734,6 +736,7 @@ class TetrisEngine {
     if (cleared > 0) {
       linesCleared += cleared;
       combo++;
+      if (combo > maxCombo) maxCombo = combo;
       comboTimer = comboGraceTime;
       level = (linesCleared ~/ 10) + 1;
       _updateDropSpeed();
@@ -853,6 +856,7 @@ class TetrisEngine {
       linesCleared += totalCleared;
       if (totalCleared > 0) {
         combo++;
+        if (combo > maxCombo) maxCombo = combo;
         comboTimer = comboGraceTime;
       }
       level = (linesCleared ~/ 10) + 1;

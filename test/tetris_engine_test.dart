@@ -163,4 +163,82 @@ void main() {
       expect(ghostPos.y, greaterThanOrEqualTo(engine.currentPiece!.position.y));
     });
   });
+
+  group('TetrisEngine - Sistema de Combo y Combo Máximo', () {
+    test('Inicia con combo 0 y maxCombo 0', () {
+      final engine = TetrisEngine();
+      expect(engine.combo, 0);
+      expect(engine.maxCombo, 0);
+    });
+
+    test('Limpiar líneas consecutivas incrementa combo y actualiza maxCombo', () {
+      final engine = TetrisEngine();
+      final targetRow = engine.rows - 1;
+
+      for (int x = 0; x < engine.cols; x++) {
+        engine.grid[targetRow][x] = Cell(type: TetrominoType.I);
+      }
+      final res1 = engine.clearLines();
+      expect(res1.linesCleared, 1);
+      expect(engine.combo, 1);
+      expect(engine.maxCombo, 1);
+
+      for (int x = 0; x < engine.cols; x++) {
+        engine.grid[targetRow][x] = Cell(type: TetrominoType.I);
+      }
+      final res2 = engine.clearLines();
+      expect(res2.linesCleared, 1);
+      expect(engine.combo, 2);
+      expect(engine.maxCombo, 2);
+
+      for (int x = 0; x < engine.cols; x++) {
+        engine.grid[targetRow][x] = Cell(type: TetrominoType.I);
+      }
+      final res3 = engine.clearLines();
+      expect(res3.linesCleared, 1);
+      expect(engine.combo, 3);
+      expect(engine.maxCombo, 3);
+    });
+
+    test('Al expirar comboGraceTime el combo actual vuelve a 0 pero maxCombo retiene el récord', () {
+      final engine = TetrisEngine();
+      final targetRow = engine.rows - 1;
+
+      for (int i = 0; i < 3; i++) {
+        for (int x = 0; x < engine.cols; x++) {
+          engine.grid[targetRow][x] = Cell(type: TetrominoType.I);
+        }
+        engine.clearLines();
+      }
+      expect(engine.combo, 3);
+      expect(engine.maxCombo, 3);
+
+      engine.update(3.5);
+      expect(engine.combo, 0);
+      expect(engine.maxCombo, 3);
+
+      for (int x = 0; x < engine.cols; x++) {
+        engine.grid[targetRow][x] = Cell(type: TetrominoType.I);
+      }
+      engine.clearLines();
+      expect(engine.combo, 1);
+      expect(engine.maxCombo, 3);
+    });
+
+    test('reset() reinicia tanto combo como maxCombo a 0', () {
+      final engine = TetrisEngine();
+      final targetRow = engine.rows - 1;
+
+      for (int x = 0; x < engine.cols; x++) {
+        engine.grid[targetRow][x] = Cell(type: TetrominoType.I);
+      }
+      engine.clearLines();
+      expect(engine.combo, 1);
+      expect(engine.maxCombo, 1);
+
+      engine.reset();
+      expect(engine.combo, 0);
+      expect(engine.maxCombo, 0);
+    });
+  });
 }

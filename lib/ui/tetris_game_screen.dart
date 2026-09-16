@@ -102,6 +102,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
   final List<VfxParticle> _particles = [];
   // Animación tipo latido/inflado para el contador de Combo
   int _lastComboValue = 0;
+  int _maxCombo = 0;
   double _comboPulseScale = 1.0;
 
 
@@ -408,6 +409,12 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
           _comboPulseScale = 1.45; // Inflado al sumar punto de combo
         }
         _lastComboValue = _engine.combo;
+      }
+      if (_engine.combo > _maxCombo) {
+        _maxCombo = _engine.combo;
+      }
+      if (_engine.maxCombo > _maxCombo) {
+        _maxCombo = _engine.maxCombo;
       }
       if (_comboPulseScale > 1.0) {
         _comboPulseScale = max(1.0, _comboPulseScale - dt * 2.5);
@@ -732,6 +739,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
           _showPauseDialog();
           break;
         case GameAction.reset:
+          _maxCombo = 0;
           _engine.reset();
           break;
         default:
@@ -1241,7 +1249,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
               const SizedBox(height: 6),
               _buildResultStatRow('Ataques enviados:', '${_engine.linesSent}'),
               const SizedBox(height: 6),
-              _buildResultStatRow('Combo máximo:', 'x${_engine.combo}'),
+              _buildResultStatRow('Combo máximo:', 'x${max(_engine.maxCombo, _maxCombo)}'),
             ],
           ),
         ),
