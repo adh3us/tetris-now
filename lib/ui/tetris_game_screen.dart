@@ -8,6 +8,7 @@ import '../core/supabase_config.dart';
 import '../game/tetris_engine.dart';
 import '../game/tetris_types.dart';
 import '../services/audio_service.dart';
+import '../services/logros_service.dart';
 import '../services/tetris_match_service.dart';
 import '../services/tetris_realtime_service.dart';
 import 'virtual_controller.dart';
@@ -105,8 +106,8 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
   int _maxCombo = 0;
   double _comboPulseScale = 1.0;
 
-
-
+  String? get _effectiveMyTeamId => widget.myTeamId ?? widget.realtimeService?.myTeamId;
+  String? get _effectiveOpponentTeamId => widget.opponentTeamId ?? widget.realtimeService?.opponentTeamId;
 
   void _showMapSelectorModal(BuildContext context) {
     showModalBottomSheet(
@@ -609,7 +610,17 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
 
       widget.realtimeService!.onPlayerKnockout = (userId, teamId) {
         if (!mounted || _isMatchEnded) return;
-        final isVictory = teamId != widget.myTeamId;
+
+        // Congelar de inmediato el ticker y el motor gráfico para corte simultáneo
+        _ticker.stop();
+        _engine.isGameOver = true;
+        _engine.isPaused = true;
+
+        final myTeam = _effectiveMyTeamId;
+        final isVictory = (userId.isNotEmpty && userId != widget.realtimeService?.currentUserId) ||
+                          (teamId.isNotEmpty && teamId != myTeam) ||
+                          (userId.isEmpty && teamId.isEmpty);
+
         if (isVictory && widget.matchId != null) {
           final cruceId = widget.torneoPartidaId ?? widget.tournamentId;
           if (cruceId != null && cruceId.isNotEmpty) {
@@ -618,10 +629,10 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
               ganadorInscripcionId: widget.myInscripcionId,
               matchId: widget.matchId!,
             );
-          } else {
+          } else if (myTeam != null && myTeam.isNotEmpty) {
             _matchService.reportMatchResult(
               matchId: widget.matchId!,
-              winnerTeamId: widget.myTeamId ?? '',
+              winnerTeamId: myTeam,
             );
           }
         }
@@ -637,7 +648,14 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
 
       widget.realtimeService!.onMatchEnd = (winnerTeamId) {
         if (!mounted || _isMatchEnded) return;
-        final isVictory = winnerTeamId == widget.myTeamId;
+
+        // Congelar de inmediato el ticker y el motor gráfico para corte simultáneo
+        _ticker.stop();
+        _engine.isGameOver = true;
+        _engine.isPaused = true;
+
+        final myTeam = _effectiveMyTeamId;
+        final isVictory = winnerTeamId.isNotEmpty && (winnerTeamId == myTeam);
         if (isVictory && widget.matchId != null) {
           final cruceId = widget.torneoPartidaId ?? widget.tournamentId;
           if (cruceId != null && cruceId.isNotEmpty) {
@@ -646,10 +664,10 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
               ganadorInscripcionId: widget.myInscripcionId,
               matchId: widget.matchId!,
             );
-          } else {
+          } else if (myTeam != null && myTeam.isNotEmpty) {
             _matchService.reportMatchResult(
               matchId: widget.matchId!,
-              winnerTeamId: widget.myTeamId ?? winnerTeamId,
+              winnerTeamId: myTeam,
             );
           }
         }
@@ -1125,18 +1143,39 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       setState(() {});
       _showResultDialog(isWinner: isWinner);
     }
+
+    // Evaluación asíncrona de logros desbloqueados en la partida
+    try {
+      final hasGold = _engine.grid.any((row) => row.any((cell) => cell?.cubeType == CubeType.gold));
+      final hasSilver = _engine.grid.any((row) => row.any((cell) => cell?.cubeType == CubeType.silver));
+      final isDuel = widget.mode == GameMode.duel1v1 || widget.mode == GameMode.tournament;
+      LogrosService().evaluarLogrosDePartida(
+        linesCleared: _engine.linesCleared,
+        maxCombo: max(_engine.maxCombo, _maxCombo),
+        currentHp: _engine.currentHp,
+        isWinner: isWinner,
+        hasGoldCube: hasGold,
+        hasSilverCube: hasSilver,
+        isDuel: isDuel,
+      );
+    } catch (_) {}
   }
 
-  void _handleGameOver() {
+  void _handleGameOver({bool surrender = false}) {
     if (_isMatchEnded) return;
+    _isMatchEnded = true;
     _ticker.stop();
     _engine.isGameOver = true;
     _engine.isPaused = true;
     _audioService.play(TetrisSfx.gameOver);
 
-    if (widget.matchId != null && widget.opponentTeamId != null) {
+    final oppTeam = _effectiveOpponentTeamId;
+
+    if (widget.matchId != null && widget.realtimeService != null) {
       widget.realtimeService?.sendKnockout();
-      widget.realtimeService?.sendMatchEnd(widget.opponentTeamId!);
+      if (oppTeam != null && oppTeam.isNotEmpty) {
+        widget.realtimeService?.sendMatchEnd(oppTeam);
+      }
 
       final cruceId = widget.torneoPartidaId ?? widget.tournamentId;
       if (cruceId != null && cruceId.isNotEmpty) {
@@ -1145,16 +1184,14 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
           ganadorInscripcionId: widget.opponentInscripcionId,
           matchId: widget.matchId!,
         );
-      } else {
+      } else if (oppTeam != null && oppTeam.isNotEmpty) {
         _matchService.reportMatchResult(
           matchId: widget.matchId!,
-          winnerTeamId: widget.opponentTeamId!,
+          winnerTeamId: oppTeam,
         );
       }
-      _terminateMatch(isWinner: false);
-    } else {
-      _terminateMatch(isWinner: false);
     }
+    _terminateMatch(isWinner: false);
   }
 
   /// Cartel prominente de GANADOR o PERDEDOR según el resultado

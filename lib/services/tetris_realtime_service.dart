@@ -211,17 +211,23 @@ class TetrisRealtimeService {
     _channel.onBroadcast(
       event: 'player_knockout',
       callback: (payload) {
-        final userId = payload['user_id'] as String;
-        final teamId = payload['team_id'] as String;
-        onPlayerKnockout?.call(userId, teamId);
+        try {
+          final userId = (payload['user_id'] ?? payload['userId'] ?? '').toString();
+          final teamId = (payload['team_id'] ?? payload['teamId'] ?? '').toString();
+          onPlayerKnockout?.call(userId, teamId);
+        } catch (_) {
+          onPlayerKnockout?.call('', '');
+        }
       },
     );
 
     _channel.onBroadcast(
       event: 'match_end',
       callback: (payload) {
-        final winnerTeamId = payload['winner_team_id'] as String;
-        onMatchEnd?.call(winnerTeamId);
+        try {
+          final winnerTeamId = (payload['winner_team_id'] ?? payload['winnerTeamId'] ?? '').toString();
+          onMatchEnd?.call(winnerTeamId);
+        } catch (_) {}
       },
     );
 
@@ -309,13 +315,15 @@ class TetrisRealtimeService {
   }
 
   Future<void> sendKnockout() async {
-    await _channel.sendBroadcastMessage(
-      event: 'player_knockout',
-      payload: {
-        'user_id': currentUserId,
-        'team_id': myTeamId,
-      },
-    );
+    try {
+      await _channel.sendBroadcastMessage(
+        event: 'player_knockout',
+        payload: {
+          'user_id': currentUserId,
+          'team_id': myTeamId,
+        },
+      );
+    } catch (_) {}
   }
 
   Future<void> sendSpecialAttack(int tier, {int duration = 20}) async {
@@ -342,12 +350,14 @@ class TetrisRealtimeService {
   }
 
   Future<void> sendMatchEnd(String winnerTeamId) async {
-    await _channel.sendBroadcastMessage(
-      event: 'match_end',
-      payload: {
-        'winner_team_id': winnerTeamId,
-      },
-    );
+    try {
+      await _channel.sendBroadcastMessage(
+        event: 'match_end',
+        payload: {
+          'winner_team_id': winnerTeamId,
+        },
+      );
+    } catch (_) {}
   }
 
   void disconnect() {

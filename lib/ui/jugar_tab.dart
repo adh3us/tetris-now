@@ -3,7 +3,9 @@ import '../core/supabase_config.dart';
 import '../game/tetris_types.dart';
 import '../services/gameros_profile_service.dart';
 import 'create_duel_screen.dart';
+import 'profile_modal.dart';
 import 'tetris_game_screen.dart';
+import 'tutorial_screen.dart';
 
 class JugarTab extends StatefulWidget {
   final bool isGuest;
@@ -90,61 +92,89 @@ class _JugarTabState extends State<JugarTab> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    // Avatar cuadrado estilo bloque Tetrimino
-                    Container(
-                      width: 68,
-                      height: 68,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF101735),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: const Color(0xFF00E5FF).withOpacity(0.6),
-                          width: 1.8,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF00E5FF).withOpacity(0.25),
-                            blurRadius: 12,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: _profile?.avatarUrl != null
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.network(
-                                _profile!.avatarUrl!,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Icon(
-                                  Icons.sports_esports_rounded,
-                                  size: 38,
+                    // Avatar interactivo estilo bloque Tetrimino
+                    GestureDetector(
+                      onTap: () => HybridProfileModal.show(context, profile: _profile),
+                      child: Tooltip(
+                        message: 'Toca para ver tu perfil y logros',
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 68,
+                              height: 68,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF101735),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: const Color(0xFF00E5FF).withOpacity(0.8),
+                                  width: 2.0,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF00E5FF).withOpacity(0.35),
+                                    blurRadius: 14,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: _profile?.avatarUrl != null
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.network(
+                                        _profile!.avatarUrl!,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => const Icon(
+                                          Icons.sports_esports_rounded,
+                                          size: 38,
+                                          color: Color(0xFF00E5FF),
+                                        ),
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.sports_esports_rounded,
+                                      size: 38,
+                                      color: Color(0xFF00E5FF),
+                                    ),
+                            ),
+                            const SizedBox(height: 10),
+                            if (!widget.isGuest && _profile != null) ...[
+                              Text(
+                                _profile!.displayName,
+                                style: const TextStyle(
                                   color: Color(0xFF00E5FF),
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 15,
+                                  letterSpacing: 0.8,
+                                  shadows: [
+                                    Shadow(
+                                      color: Color(0x6600E5FF),
+                                      blurRadius: 8,
+                                    ),
+                                  ],
                                 ),
                               ),
-                            )
-                          : const Icon(
-                              Icons.sports_esports_rounded,
-                              size: 38,
-                              color: Color(0xFF00E5FF),
-                            ),
-                    ),
-                    const SizedBox(height: 10),
-                    if (!widget.isGuest && _profile != null)
-                      Text(
-                        _profile!.displayName,
-                        style: const TextStyle(
-                          color: Color(0xFF00E5FF),
-                          fontWeight: FontWeight.w900,
-                          fontSize: 15,
-                          letterSpacing: 0.8,
-                          shadows: [
-                            Shadow(
-                              color: Color(0x6600E5FF),
-                              blurRadius: 8,
-                            ),
+                              const SizedBox(height: 2),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.touch_app_rounded, size: 12, color: Color(0xFF94A3B8)),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'VER PERFIL & LOGROS',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.6),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.8,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       ),
+                    ),
                     const SizedBox(height: 10),
                     // Badge Rango en Amarillo Citrino brillante con resplandor neón
                     Container(
@@ -349,7 +379,83 @@ class _JugarTabState extends State<JugarTab> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 12),
+
+                    // BOTÓN TERCIARIO: GUÍA / TUTORIAL ARCADE (Fondo oscuro + Borde Neón Púrpura)
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF090D21),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: const Color(0xFFB388FF).withOpacity(0.75),
+                          width: 1.3,
+                        ),
+                        boxShadow: [
+                          const BoxShadow(
+                            color: Color(0xFF02040A),
+                            offset: Offset(0, 3),
+                            blurRadius: 0,
+                          ),
+                          BoxShadow(
+                            color: const Color(0xFFB388FF).withOpacity(0.18),
+                            blurRadius: 10,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => const TutorialScreen()),
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 18.0, vertical: 13.0),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(7),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0x1FB388FF),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: const Color(0xFFB388FF).withOpacity(0.3)),
+                                  ),
+                                  child: const Icon(Icons.school_rounded, color: Color(0xFFB388FF), size: 22),
+                                ),
+                                const SizedBox(width: 14),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'GUÍA & ENTRENAMIENTO ARCADE',
+                                        style: TextStyle(
+                                          color: Color(0xFFF1F5F9),
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 12.5,
+                                          letterSpacing: 0.8,
+                                        ),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'Aprende SRS, combos, botón Drop y cubos 4x4',
+                                        style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10.5),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFFB388FF), size: 16),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
 
                     // HEADER HIGH SCORES ARCADE
                     Row(

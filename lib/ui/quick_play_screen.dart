@@ -94,12 +94,12 @@ class _QuickPlayScreenState extends State<QuickPlayScreen> with SingleTickerProv
     final user = _matchService.supabase.auth.currentUser;
     final userId = user?.id ?? 'guest_player';
 
+    final opponentTeamId = teamId == 'team_1' ? 'team_2' : 'team_1';
     final realtime = TetrisRealtimeService(
-      supabase: _matchService.supabase,
       matchId: matchId,
-      myUserId: userId,
       myTeamId: teamId,
-      myGamerTag: _gamerTag,
+      opponentTeamId: opponentTeamId,
+      currentUserId: userId,
     );
 
     if (mounted) {
@@ -108,6 +108,8 @@ class _QuickPlayScreenState extends State<QuickPlayScreen> with SingleTickerProv
           builder: (_) => TetrisGameScreen(
             mode: GameMode.duel1v1,
             matchId: matchId,
+            myTeamId: teamId,
+            opponentTeamId: opponentTeamId,
             realtimeService: realtime,
           ),
         ),

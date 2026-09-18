@@ -98,7 +98,13 @@ class _HomeShellState extends State<HomeShell> {
       try {
         await Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => TetrisGameScreen(mode: GameMode.duel1v1, matchId: matchId, realtimeService: realtime),
+            builder: (_) => TetrisGameScreen(
+              mode: GameMode.duel1v1,
+              matchId: matchId,
+              myTeamId: myTeamId,
+              opponentTeamId: opponentTeamId,
+              realtimeService: realtime,
+            ),
           ),
         );
       } finally {

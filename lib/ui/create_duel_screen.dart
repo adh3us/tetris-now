@@ -101,10 +101,11 @@ class _CreateDuelScreenState extends State<CreateDuelScreen> with SingleTickerPr
     final user = _matchService.supabase.auth.currentUser;
     final userId = user?.id ?? 'guest_player';
 
+    final oppTeamId = teamId == 'team_1' ? 'team_2' : 'team_1';
     final realtime = TetrisRealtimeService(
       matchId: matchId,
       myTeamId: teamId,
-      opponentTeamId: teamId == 'team_1' ? 'team_2' : 'team_1',
+      opponentTeamId: oppTeamId,
       currentUserId: userId,
     );
 
@@ -114,6 +115,8 @@ class _CreateDuelScreenState extends State<CreateDuelScreen> with SingleTickerPr
           builder: (_) => TetrisGameScreen(
             mode: GameMode.duel1v1,
             matchId: matchId,
+            myTeamId: teamId,
+            opponentTeamId: oppTeamId,
             realtimeService: realtime,
           ),
         ),

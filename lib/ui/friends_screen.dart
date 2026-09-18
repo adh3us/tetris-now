@@ -8,6 +8,7 @@ import '../services/tetris_match_service.dart';
 import '../services/tetris_realtime_service.dart';
 import '../core/supabase_config.dart';
 import '../game/tetris_types.dart';
+import 'profile_modal.dart';
 import 'tetris_game_screen.dart';
 
 class FriendsScreen extends StatefulWidget {
@@ -154,7 +155,13 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => TetrisGameScreen(mode: GameMode.duel1v1, matchId: matchId, realtimeService: realtime),
+          builder: (_) => TetrisGameScreen(
+            mode: GameMode.duel1v1,
+            matchId: matchId,
+            myTeamId: myTeamId,
+            opponentTeamId: opponentTeamId,
+            realtimeService: realtime,
+          ),
         ),
       );
     } finally {
@@ -301,26 +308,32 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
       ),
       child: Row(
         children: [
-          // Avatar cuadrado estilo Tetrimino con acento cian neón
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: const Color(0xFF101735),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: const Color(0xFF00E5FF).withOpacity(0.6),
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF00E5FF).withOpacity(0.2),
-                  blurRadius: 8,
+          // Avatar interactivo estilo Tetrimino con acento cian neón
+          GestureDetector(
+            onTap: () => HybridProfileModal.show(context, profile: _profile),
+            child: Tooltip(
+              message: 'Ver perfil y logros',
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF101735),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFF00E5FF).withOpacity(0.8),
+                    width: 1.8,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF00E5FF).withOpacity(0.3),
+                      blurRadius: 8,
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: const Center(
-              child: Icon(Icons.person_rounded, size: 26, color: Color(0xFF00E5FF)),
+                child: const Center(
+                  child: Icon(Icons.person_rounded, size: 26, color: Color(0xFF00E5FF)),
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 12),
