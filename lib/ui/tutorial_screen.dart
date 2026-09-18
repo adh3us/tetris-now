@@ -505,11 +505,11 @@ class _TutorialScreenState extends State<TutorialScreen> with SingleTickerProvid
         _audioService.play(TetrisSfx.hardDrop);
         break;
       case GameAction.rotateCW:
-        _engine.rotateCW();
+        _engine.rotate(1);
         _audioService.play(TetrisSfx.rotate);
         break;
       case GameAction.rotateCCW:
-        _engine.rotateCCW();
+        _engine.rotate(-1);
         _audioService.play(TetrisSfx.rotate);
         break;
       case GameAction.hold:
