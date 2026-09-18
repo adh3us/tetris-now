@@ -15,12 +15,12 @@ void main() {
       );
       expect(maxWin, equals(100));
 
-      // Caso 2: Victoria lenta con baja intensidad (> 180s, pocas líneas)
+      // Caso 2: Victoria lenta con baja intensidad (> 180s, sin ataques ni combos)
       final minWin = TetrisMatchService.calcularEloDeltaGanador(
         durationSeconds: 210.0,
-        linesSent: 1,
+        linesSent: 0,
         maxCombo: 0,
-        linesCleared: 2,
+        linesCleared: 0,
       );
       expect(minWin, equals(60));
 

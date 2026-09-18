@@ -53,8 +53,8 @@ BEGIN
         v_winner_delta := LEAST(100, GREATEST(60, (p_payload->>'elo_delta_winner')::INT));
         v_loser_delta := LEAST(90, GREATEST(50, ABS((p_payload->>'elo_delta_loser')::INT)));
     ELSE
-        -- Cálculo de factor de velocidad: partidas rápidas (<45s) dan factor 1.0, lentas (>180s) factor 0.0
-        v_speed_factor := LEAST(1.0, GREATEST(0.0, (180.0 - LEAST(180.0, GREATEST(30.0, v_duration_seconds))) / 150.0));
+        -- Cálculo de factor de velocidad: partidas rápidas (<=45s) dan factor 1.0, lentas (>=180s) factor 0.0
+        v_speed_factor := LEAST(1.0, GREATEST(0.0, (180.0 - LEAST(180.0, GREATEST(45.0, v_duration_seconds))) / 135.0));
 
         -- Factor de intensidad basado en ataques enviados y combos
         v_intensity_factor := LEAST(1.0, GREATEST(0.0, (v_lines_sent / 12.0 * 0.6) + (v_max_combo / 5.0 * 0.4)));
