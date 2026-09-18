@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tetris_app/game/tetris_engine.dart';
-import 'package:tetris_app/game/tetris_types.dart';
-import 'package:tetris_app/services/tetris_match_service.dart';
+import '../lib/game/tetris_engine.dart';
+import '../lib/game/tetris_types.dart';
+import '../lib/services/tetris_match_service.dart';
 
 void main() {
   group('Sistema ELO Dinámico', () {
