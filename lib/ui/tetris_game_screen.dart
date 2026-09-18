@@ -71,6 +71,7 @@ class TetrisGameScreen extends StatefulWidget {
   final String? torneoPartidaId;
   final String? myInscripcionId;
   final String? opponentInscripcionId;
+  final String? opponentName;
   final TetrisRealtimeService? realtimeService;
   final GameMode mode;
 
@@ -83,6 +84,7 @@ class TetrisGameScreen extends StatefulWidget {
     this.torneoPartidaId,
     this.myInscripcionId,
     this.opponentInscripcionId,
+    this.opponentName,
     this.realtimeService,
     this.mode = GameMode.solo,
   }) : super(key: key);
@@ -372,13 +374,53 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
   double _dragStartY = 0;
 
   bool _isMatchEnded = false;
+  String? _opponentDisplayName;
+  int _appliedEloDelta = 0;
+  bool _isWinnerResult = false;
   List<List<int>> _opponentGrid = [];
   int _opponentStackHeight = 0;
   double _boardSyncCooldown = 0.0;
 
+  Future<void> _fetchOpponentInfo() async {
+    if (widget.matchId == null) return;
+    try {
+      final myId = SupabaseConfig.client.auth.currentUser?.id;
+      final rows = await SupabaseConfig.client
+          .schema('tetris')
+          .from('match_tetris_players')
+          .select('user_id, gamer_tag')
+          .eq('match_id', widget.matchId!)
+          .neq('user_id', myId ?? '');
+      if (rows.isNotEmpty) {
+        final tag = rows.first['gamer_tag'] as String?;
+        final oppId = rows.first['user_id'] as String?;
+        if (tag != null && tag.isNotEmpty && mounted) {
+          setState(() => _opponentDisplayName = tag);
+        }
+        if (oppId != null) {
+          final uRow = await SupabaseConfig.client
+              .from('usuarios')
+              .select('nombre_display, username')
+              .eq('id', oppId)
+              .maybeSingle();
+          if (uRow != null && mounted) {
+            final dName = uRow['nombre_display'] ?? uRow['username'];
+            if (dName != null && dName.toString().trim().isNotEmpty) {
+              setState(() => _opponentDisplayName = dName.toString().trim());
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
+    _opponentDisplayName = widget.opponentName;
+    if (widget.matchId != null) {
+      _fetchOpponentInfo();
+    }
     _loadHiScore();
     _loadSavedArena();
 
@@ -705,6 +747,10 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
   }
 
   void _handleAction(GameAction action) {
+    // Bloqueo total de controles y audio si la partida terminó o el motor está en game over
+    if (_isMatchEnded || _engine.isGameOver) return;
+    if (_engine.isPaused && action != GameAction.pause) return;
+
     setState(() {
       switch (action) {
         case GameAction.moveLeft:
@@ -753,10 +799,17 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
           _handleSpecialAttack();
           break;
         case GameAction.pause:
+          final bool isVs = widget.matchId != null || widget.mode == GameMode.duel1v1 || widget.mode == GameMode.tournament;
+          if (isVs) {
+            _triggerImpactBanner('DUELO ONLINE EN VIVO', sub: 'NO SE PERMITE PAUSAR EN PARTIDAS VS', color: const Color(0xFFFF1744));
+            return;
+          }
           _engine.isPaused = !_engine.isPaused;
           _showPauseDialog();
           break;
         case GameAction.reset:
+          final bool isVs = widget.matchId != null || widget.mode == GameMode.duel1v1 || widget.mode == GameMode.tournament;
+          if (isVs) return; // No reiniciar en partidas online
           _maxCombo = 0;
           _engine.reset();
           break;
@@ -1124,24 +1177,42 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
   }
 
   /// Finaliza la partida de manera instantánea y simultánea para ambos jugadores
-  void _terminateMatch({required bool isWinner}) {
+  void _terminateMatch({required bool isWinner, bool isSurrender = false}) {
     if (_isMatchEnded) return;
     _isMatchEnded = true;
+    _isWinnerResult = isWinner;
     _ticker.stop();
     _engine.isGameOver = true;
     _engine.isPaused = true;
 
+    final matchSecs = _ambientTime > 0 ? _ambientTime : 60.0;
+    final winnerDelta = TetrisMatchService.calcularEloDeltaGanador(
+      durationSeconds: matchSecs,
+      linesSent: _engine.linesSent,
+      maxCombo: max(_engine.maxCombo, _maxCombo),
+      linesCleared: _engine.linesCleared,
+    );
+    final loserDelta = TetrisMatchService.calcularEloDeltaPerdedor(
+      durationSeconds: matchSecs,
+      linesSent: _engine.linesSent,
+      maxCombo: max(_engine.maxCombo, _maxCombo),
+      linesCleared: _engine.linesCleared,
+      isSurrender: isSurrender,
+    );
+
+    _appliedEloDelta = isWinner ? winnerDelta : loserDelta;
+
     if (isWinner) {
       _audioService.play(TetrisSfx.tetris);
-      _triggerImpactBanner('¡GANADOR!', sub: '¡HAS GANADO LA PARTIDA!', color: const Color(0xFF00D26A));
+      _triggerImpactBanner('¡GANADOR!', sub: '¡HAS GANADO LA PARTIDA! +$_appliedEloDelta PTS ELO', color: const Color(0xFF00D26A));
     } else {
       _audioService.play(TetrisSfx.gameOver);
-      _triggerImpactBanner('PERDEDOR', sub: 'PARTIDA FINALIZADA', color: const Color(0xFFEF4444));
+      _triggerImpactBanner('PERDEDOR', sub: 'PARTIDA FINALIZADA • $_appliedEloDelta PTS ELO', color: const Color(0xFFFF1744));
     }
 
     if (mounted) {
       setState(() {});
-      _showResultDialog(isWinner: isWinner);
+      _showResultDialog(isWinner: isWinner, eloDelta: _appliedEloDelta);
     }
 
     // Evaluación asíncrona de logros desbloqueados en la partida
@@ -1163,7 +1234,6 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
 
   void _handleGameOver({bool surrender = false}) {
     if (_isMatchEnded) return;
-    _isMatchEnded = true;
     _ticker.stop();
     _engine.isGameOver = true;
     _engine.isPaused = true;
@@ -1177,6 +1247,13 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
         widget.realtimeService?.sendMatchEnd(oppTeam);
       }
 
+      if (surrender) {
+        final myUserId = SupabaseConfig.client.auth.currentUser?.id;
+        if (myUserId != null) {
+          _matchService.penalizarAbandono(matchId: widget.matchId!, userId: myUserId).catchError((_) {});
+        }
+      }
+
       final cruceId = widget.torneoPartidaId ?? widget.tournamentId;
       if (cruceId != null && cruceId.isNotEmpty) {
         _matchService.reportarResultadoCruceTorneo(
@@ -1185,17 +1262,41 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
           matchId: widget.matchId!,
         );
       } else if (oppTeam != null && oppTeam.isNotEmpty) {
+        final matchSecs = _ambientTime > 0 ? _ambientTime : 60.0;
+        final winnerDelta = TetrisMatchService.calcularEloDeltaGanador(
+          durationSeconds: matchSecs,
+          linesSent: _engine.linesSent,
+          maxCombo: max(_engine.maxCombo, _maxCombo),
+          linesCleared: _engine.linesCleared,
+        );
+        final loserDelta = TetrisMatchService.calcularEloDeltaPerdedor(
+          durationSeconds: matchSecs,
+          linesSent: _engine.linesSent,
+          maxCombo: max(_engine.maxCombo, _maxCombo),
+          linesCleared: _engine.linesCleared,
+          isSurrender: surrender,
+        );
+
         _matchService.reportMatchResult(
           matchId: widget.matchId!,
           winnerTeamId: oppTeam,
+          payload: {
+            'duration_seconds': matchSecs,
+            'lines_sent': _engine.linesSent,
+            'max_combo': max(_engine.maxCombo, _maxCombo),
+            'lines_cleared': _engine.linesCleared,
+            'is_surrender': surrender,
+            'elo_delta_winner': winnerDelta,
+            'elo_delta_loser': loserDelta,
+          },
         );
       }
     }
-    _terminateMatch(isWinner: false);
+    _terminateMatch(isWinner: false, isSurrender: surrender);
   }
 
   /// Cartel prominente de GANADOR o PERDEDOR según el resultado
-  void _showResultDialog({required bool isWinner}) {
+  void _showResultDialog({required bool isWinner, int eloDelta = 0}) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1254,7 +1355,28 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
                 ],
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              decoration: BoxDecoration(
+                color: (isWinner ? const Color(0xFF00E5FF) : const Color(0xFFFF1744)).withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isWinner ? const Color(0xFF00E5FF) : const Color(0xFFFF1744),
+                  width: 1.2,
+                ),
+              ),
+              child: Text(
+                isWinner ? '+$eloDelta PTS ELO' : '$eloDelta PTS ELO',
+                style: TextStyle(
+                  color: isWinner ? const Color(0xFF00E5FF) : const Color(0xFFFF1744),
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                  letterSpacing: 1.0,
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
             Text(
               isWinner
                   ? '¡Victoria indiscutida! Has superado al rival.'
@@ -1280,6 +1402,8 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              _buildResultStatRow('Rating ELO:', isWinner ? '+$eloDelta pts' : '$eloDelta pts'),
+              const SizedBox(height: 6),
               _buildResultStatRow('Puntuación:', '${_engine.score} pts'),
               const SizedBox(height: 6),
               _buildResultStatRow('Líneas limpiadas:', '${_engine.linesCleared}'),
@@ -1448,10 +1572,11 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       return;
     }
 
+    final bool isMultiplayer = widget.matchId != null || widget.mode == GameMode.duel1v1 || widget.mode == GameMode.tournament;
     final wasPaused = _engine.isPaused;
-    setState(() => _engine.isPaused = true);
-
-    final bool isMultiplayer = widget.matchId != null;
+    if (!isMultiplayer) {
+      setState(() => _engine.isPaused = true);
+    }
 
     final shouldExit = await showDialog<bool>(
       context: context,
@@ -1479,7 +1604,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
         ),
         content: Text(
           isMultiplayer
-              ? 'Si sales ahora, la partida se dará por perdida y se notificará al rival por abandono.'
+              ? 'Si abandonas ahora, la partida terminará de inmediato para ambos jugadores, tu rival obtendrá la victoria y se te descontarán -90 PTS de ELO por abandono.'
               : '¿Deseas salir al menú principal? Se perderá el progreso de tu partida actual.',
           style: const TextStyle(
             color: Color(0xFF94A3B8),
@@ -1518,7 +1643,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
 
     if (shouldExit == true) {
       if (isMultiplayer) {
-        _handleGameOver();
+        _handleGameOver(surrender: true);
       } else {
         _ticker.stop();
         _engine.isGameOver = true;
@@ -1527,7 +1652,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
         Navigator.of(context).pop();
       }
     } else {
-      if (mounted && !wasPaused) {
+      if (mounted && !isMultiplayer && !wasPaused) {
         setState(() => _engine.isPaused = false);
       }
     }
@@ -1875,6 +2000,8 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
           isVisible: _isControllerVisible,
           onOpenMap: _cycleArena,
           isShieldActive: _engine.isShieldActive,
+          enabled: !_isMatchEnded && !_engine.isGameOver,
+          isVsMode: widget.matchId != null || widget.mode == GameMode.duel1v1 || widget.mode == GameMode.tournament,
           onToggleTheme: () {
             setState(() {
               _controllerTheme = _controllerTheme == ControllerTheme.dualshock
@@ -1899,24 +2026,37 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
 
   Widget _buildCombatStatusBar() {
     final myHp = _engine.currentHp;
+    final bool isLowHp = myHp <= 20 && myHp > 0;
     final myHpRatio = (myHp / 100.0).clamp(0.0, 1.0);
-    // HP propio en Amarillo Citrino brillante
-    const myHpColor = Color(0xFFFACC15);
+    // HP propio en Amarillo Citrino brillante o Rojo Neón si está en estado crítico (<=20 HP)
+    final myHpColor = isLowHp ? const Color(0xFFFF1744) : const Color(0xFFFACC15);
 
     final oppHpRatio = (_opponentHp / 100.0).clamp(0.0, 1.0);
     // HP del rival en Rojo Neón intenso
     const oppHpColor = Color(0xFFFF1744);
+    final oppLabel = (_opponentDisplayName != null && _opponentDisplayName!.trim().isNotEmpty)
+        ? _opponentDisplayName!.trim().toUpperCase()
+        : 'RIVAL';
 
     return Container(
-      height: 22,
+      height: 24,
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: const Color(0xFF0F1118),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0xFF2B3144), width: 1.2),
-        boxShadow: const [
-          BoxShadow(
+        border: Border.all(
+          color: isLowHp ? const Color(0xFFFF1744) : const Color(0xFF2B3144),
+          width: isLowHp ? 1.5 : 1.2,
+        ),
+        boxShadow: [
+          if (isLowHp)
+            BoxShadow(
+              color: const Color(0xFFFF1744).withOpacity(0.4),
+              blurRadius: 8,
+              spreadRadius: 1,
+            ),
+          const BoxShadow(
             color: Colors.black54,
             offset: Offset(0, 2),
             blurRadius: 4,
@@ -1925,15 +2065,19 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       ),
       child: Row(
         children: [
-          // Tu Barra de Vida (HP) - Amarillo Citrino
+          // Tu Barra de Vida (HP)
           Expanded(
             child: Row(
               children: [
-                const Icon(Icons.favorite, size: 11, color: Color(0xFFFACC15)),
+                Icon(
+                  isLowHp ? Icons.warning_amber_rounded : Icons.favorite,
+                  size: 11,
+                  color: myHpColor,
+                ),
                 const SizedBox(width: 3),
                 Text(
                   'HP: $myHp',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: myHpColor,
                     fontSize: 8.5,
                     fontWeight: FontWeight.w900,
@@ -1946,8 +2090,8 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
                     borderRadius: BorderRadius.circular(2),
                     child: LinearProgressIndicator(
                       value: myHpRatio,
-                      backgroundColor: const Color(0xFF262010),
-                      valueColor: const AlwaysStoppedAnimation<Color>(myHpColor),
+                      backgroundColor: isLowHp ? const Color(0xFF330B10) : const Color(0xFF262010),
+                      valueColor: AlwaysStoppedAnimation<Color>(myHpColor),
                       minHeight: 4.5,
                     ),
                   ),
@@ -1958,7 +2102,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
 
           if (widget.matchId != null) ...[
             const SizedBox(width: 10),
-            // Barra de Vida del Rival (1v1) - Rojo Neón
+            // Barra de Vida del Rival (1v1) con Nombre real del adversario
             Expanded(
               child: Row(
                 children: [
@@ -1974,13 +2118,17 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
                     ),
                   ),
                   const SizedBox(width: 5),
-                  Text(
-                    'RIVAL: $_opponentHp',
-                    style: const TextStyle(
-                      color: oppHpColor,
-                      fontSize: 8.5,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
+                  Flexible(
+                    child: Text(
+                      '$oppLabel: $_opponentHp',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: oppHpColor,
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 3),
@@ -2556,65 +2704,187 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
           _dragStartY = details.localPosition.dy;
         }
       },
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF070B19), // Pantalla Central (CRT): Azul noche
-          borderRadius: BorderRadius.circular(8),
-          // Borde de neón: violeta en reposo, rojo neón parpadeante por 0.5s al recibir daño
-          border: Border.all(
-            color: _isCrtDamageFlashing
-                ? const Color(0xFFFF1744) // Rojo Neón de daño
-                : const Color(0xFFA855F7).withOpacity(0.85),
-            width: _isCrtDamageFlashing ? 2.5 : 2.0,
-          ),
-          boxShadow: [
-            // Resplandor neón: violeta en reposo o destello rojo neón intenso
-            BoxShadow(
-              color: _isCrtDamageFlashing
-                  ? const Color(0xFFFF1744).withOpacity(0.95) // Resplandor rojo neón de impacto
-                  : const Color(0xFFA855F7).withOpacity(0.35),
-              blurRadius: _isCrtDamageFlashing ? 22 : 12,
-              spreadRadius: _isCrtDamageFlashing ? 3.5 : 1,
-            ),
-            // Marco exterior hundido en la carcasa
-            const BoxShadow(
-              color: Colors.black87,
-              offset: Offset(0, 4),
-              blurRadius: 10,
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              CustomPaint(
-                size: Size(width, height),
-                painter: TetrisBoardPainter(
-                  engine: _engine,
-                  particles: _particles,
-                  screenFlashOpacity: _screenFlashOpacity,
-                  shieldWaveProgress: _shieldWaveProgress,
-                  arenaTheme: _currentArena,
-                  ambientTime: _ambientTime,
-                  shakeOffset: _shakeOffset,
-                ),
+      child: Builder(
+        builder: (context) {
+          final bool isLowHp = _engine.currentHp <= 20 && _engine.currentHp > 0;
+          final double pulse = sin(_ambientTime * 8).abs();
+
+          return Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF070B19), // Pantalla Central (CRT): Azul noche
+              borderRadius: BorderRadius.circular(8),
+              // Borde de neón: rojo pulsante si HP <= 20, destello si recibe daño o violeta en reposo
+              border: Border.all(
+                color: isLowHp
+                    ? const Color(0xFFFF1744)
+                    : (_isCrtDamageFlashing
+                        ? const Color(0xFFFF1744) // Rojo Neón de daño
+                        : const Color(0xFFA855F7).withOpacity(0.85)),
+                width: isLowHp ? 3.0 : (_isCrtDamageFlashing ? 2.5 : 2.0),
               ),
-              // Overlay sutil de scanlines y curvatura simulando monitor CRT viejo
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: CustomPaint(
+              boxShadow: [
+                // Resplandor neón: rojo neón pulsante en vida crítica
+                BoxShadow(
+                  color: isLowHp
+                      ? const Color(0xFFFF1744).withOpacity(0.65 + 0.35 * pulse)
+                      : (_isCrtDamageFlashing
+                          ? const Color(0xFFFF1744).withOpacity(0.95) // Resplandor rojo neón de impacto
+                          : const Color(0xFFA855F7).withOpacity(0.35)),
+                  blurRadius: isLowHp ? (18.0 + 8.0 * pulse) : (_isCrtDamageFlashing ? 22 : 12),
+                  spreadRadius: isLowHp ? (2.5 + 2.0 * pulse) : (_isCrtDamageFlashing ? 3.5 : 1),
+                ),
+                // Marco exterior hundido en la carcasa
+                const BoxShadow(
+                  color: Colors.black87,
+                  offset: Offset(0, 4),
+                  blurRadius: 10,
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  CustomPaint(
                     size: Size(width, height),
-                    painter: const CrtScanlinesOverlayPainter(),
+                    painter: TetrisBoardPainter(
+                      engine: _engine,
+                      particles: _particles,
+                      screenFlashOpacity: _screenFlashOpacity,
+                      shieldWaveProgress: _shieldWaveProgress,
+                      arenaTheme: _currentArena,
+                      ambientTime: _ambientTime,
+                      shakeOffset: _shakeOffset,
+                    ),
                   ),
-                ),
+                  // Overlay sutil de scanlines y curvatura simulando monitor CRT viejo
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        size: Size(width, height),
+                        painter: const CrtScanlinesOverlayPainter(),
+                      ),
+                    ),
+                  ),
+                  // Indicador perimetral interno en rojo para alerta de vida crítica (<= 20 HP)
+                  if (isLowHp)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: const Color(0xFFFF1744).withOpacity(0.40 + 0.40 * pulse),
+                              width: 2.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (_impactBannerText != null)
+                    _buildCenterImpactBanner(),
+                  // Cartel prominente de fin de partida (PERDEDOR / ¡GANADOR!) sobre el mapa freezado
+                  if (_isMatchEnded || _engine.isGameOver)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black.withOpacity(0.60),
+                        alignment: Alignment.center,
+                        child: _buildMatchEndOverlayBanner(),
+                      ),
+                    ),
+                ],
               ),
-              if (_impactBannerText != null)
-                _buildCenterImpactBanner(),
-            ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Banner de overlay arcade centrado sobre el tablero CRT congelado
+  Widget _buildMatchEndOverlayBanner() {
+    final bool isWinner = _isWinnerResult;
+    final Color mainColor = isWinner ? const Color(0xFF00E5FF) : const Color(0xFFFF1744);
+    final String title = isWinner ? '¡GANADOR!' : 'PERDEDOR';
+    final String subtitle = isWinner ? '¡VICTORIA TOTAL!' : 'HP AGOTADO • FIN DE PARTIDA';
+    final String eloText = isWinner ? '+$_appliedEloDelta PTS ELO' : '$_appliedEloDelta PTS ELO';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF070B19).withOpacity(0.95),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: mainColor, width: 2.5),
+        boxShadow: [
+          BoxShadow(
+            color: mainColor.withOpacity(0.55),
+            blurRadius: 18,
+            spreadRadius: 2.5,
           ),
-        ),
+          const BoxShadow(
+            color: Colors.black87,
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isWinner ? Icons.emoji_events_rounded : Icons.sentiment_very_dissatisfied_rounded,
+            color: isWinner ? const Color(0xFFFACC15) : const Color(0xFFFF1744),
+            size: 38,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: mainColor,
+              fontWeight: FontWeight.w900,
+              fontSize: 26,
+              letterSpacing: 3.5,
+              shadows: [
+                Shadow(
+                  color: mainColor.withOpacity(0.85),
+                  blurRadius: 16,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF94A3B8),
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: mainColor.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: mainColor.withOpacity(0.5), width: 1.0),
+            ),
+            child: Text(
+              eloText,
+              style: TextStyle(
+                color: mainColor,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.0,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

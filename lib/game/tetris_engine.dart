@@ -991,6 +991,7 @@ class TetrisEngine {
   }
 
   bool activateShield([int seconds = 20]) {
+    if (isGameOver || isPaused) return false;
     if (defenseEnergy >= 5 && !isShieldActive) {
       isShieldActive = true;
       defenseEnergy = 0;

@@ -9,8 +9,9 @@ class VirtualControllerWrapper extends StatelessWidget {
   final VoidCallback onToggleTheme;
   final VoidCallback onCycleOpacity;
   final VoidCallback? onOpenMap;
-
   final bool isShieldActive;
+  final bool isVsMode;
+  final bool enabled;
 
   const VirtualControllerWrapper({
     Key? key,
@@ -22,7 +23,14 @@ class VirtualControllerWrapper extends StatelessWidget {
     required this.onCycleOpacity,
     this.onOpenMap,
     this.isShieldActive = false,
+    this.isVsMode = false,
+    this.enabled = true,
   }) : super(key: key);
+
+  void _handleSafeAction(GameAction action) {
+    if (!enabled) return;
+    onAction(action);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +48,7 @@ class VirtualControllerWrapper extends StatelessWidget {
     }
 
     return Opacity(
-      opacity: opacity.clamp(0.1, 1.0),
+      opacity: (enabled ? opacity : opacity * 0.45).clamp(0.1, 1.0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -51,13 +59,16 @@ class VirtualControllerWrapper extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                _ArcadePausePill(onTap: () => onAction(GameAction.pause)),
+                _ArcadePausePill(
+                  isVsMode: isVsMode,
+                  onTap: () => _handleSafeAction(GameAction.pause),
+                ),
               ],
             ),
           ),
           initialTheme == ControllerTheme.dualshock
-              ? VirtualDualShockController(onAction: onAction, onOpenMap: onOpenMap, isShieldActive: isShieldActive)
-              : MobaTouchController(onAction: onAction, onOpenMap: onOpenMap, isShieldActive: isShieldActive),
+              ? VirtualDualShockController(onAction: _handleSafeAction, onOpenMap: onOpenMap, isShieldActive: isShieldActive)
+              : MobaTouchController(onAction: _handleSafeAction, onOpenMap: onOpenMap, isShieldActive: isShieldActive),
         ],
       ),
     );
@@ -67,7 +78,8 @@ class VirtualControllerWrapper extends StatelessWidget {
 /// Pastilla física estilo botón arcade para la Pausa con feedback lumínico
 class _ArcadePausePill extends StatefulWidget {
   final VoidCallback onTap;
-  const _ArcadePausePill({Key? key, required this.onTap}) : super(key: key);
+  final bool isVsMode;
+  const _ArcadePausePill({Key? key, required this.onTap, this.isVsMode = false}) : super(key: key);
 
   @override
   State<_ArcadePausePill> createState() => _ArcadePausePillState();
@@ -94,24 +106,32 @@ class _ArcadePausePillState extends State<_ArcadePausePill> {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: _isPressed
-                  ? const [Color(0xFFFEF08A), Color(0xFFEAB308), Color(0xFFA16207)]
-                  : const [Color(0xFFFDE047), Color(0xFFCA8A04), Color(0xFF854D0E)],
+              colors: widget.isVsMode
+                  ? (_isPressed
+                      ? const [Color(0xFF64748B), Color(0xFF475569), Color(0xFF334155)]
+                      : const [Color(0xFF475569), Color(0xFF334155), Color(0xFF1E293B)])
+                  : (_isPressed
+                      ? const [Color(0xFFFEF08A), Color(0xFFEAB308), Color(0xFFA16207)]
+                      : const [Color(0xFFFDE047), Color(0xFFCA8A04), Color(0xFF854D0E)]),
             ),
             borderRadius: BorderRadius.circular(6),
             border: Border.all(
-              color: _isPressed ? Colors.white : const Color(0xFFFEF08A),
+              color: widget.isVsMode
+                  ? (_isPressed ? Colors.white38 : const Color(0xFF64748B))
+                  : (_isPressed ? Colors.white : const Color(0xFFFEF08A)),
               width: 1.0,
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF583307),
+                color: widget.isVsMode ? Colors.black87 : const Color(0xFF583307),
                 offset: Offset(0, _isPressed ? 1.0 : 3.0),
                 blurRadius: 0.5,
               ),
               if (_isPressed) ...[
                 BoxShadow(
-                  color: const Color(0xFFFACC15).withOpacity(0.95), // Fogonazo ámbar eléctrico
+                  color: widget.isVsMode
+                      ? const Color(0xFFFF1744).withOpacity(0.6)
+                      : const Color(0xFFFACC15).withOpacity(0.95),
                   blurRadius: 12.0,
                   spreadRadius: 2.5,
                 ),
@@ -123,15 +143,19 @@ class _ArcadePausePillState extends State<_ArcadePausePill> {
               ],
             ],
           ),
-          child: const Row(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.pause_rounded, size: 12, color: Color(0xFF1E293B)),
-              SizedBox(width: 3),
+              Icon(
+                widget.isVsMode ? Icons.lock_outline_rounded : Icons.pause_rounded,
+                size: 11,
+                color: widget.isVsMode ? const Color(0xFF94A3B8) : const Color(0xFF1E293B),
+              ),
+              const SizedBox(width: 3),
               Text(
-                'PAUSA',
+                widget.isVsMode ? 'ONLINE' : 'PAUSA',
                 style: TextStyle(
-                  color: Color(0xFF1E293B),
+                  color: widget.isVsMode ? const Color(0xFF94A3B8) : const Color(0xFF1E293B),
                   fontSize: 8.5,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.8,

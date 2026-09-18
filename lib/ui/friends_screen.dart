@@ -104,14 +104,14 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
 
     final matchId = res['match_id'] as String;
     final myTeamId = res['team_id'] as String;
-    _esperarRivalYEntrar(matchId, myTeamId);
+    _esperarRivalYEntrar(matchId, myTeamId, opponentName: friend.gamerTag);
   }
 
   /// El retador espera a que el retado acepte (o expire), sondeando el
   /// estado real del match — igual que hace CreateDuelScreen con el
   /// matchmaking automático. No usa MatchLobbyScreen porque esa pantalla
   /// siempre te trata como invitado (team_2), y acá el retador ya es team_1.
-  void _esperarRivalYEntrar(String matchId, String myTeamId) {
+  void _esperarRivalYEntrar(String matchId, String myTeamId, {String? opponentName}) {
     _esperandoRivalTimer?.cancel();
     _isPollingMatch = false;
     _esperandoRivalTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
@@ -127,7 +127,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
         if (estado['status'] == 'matched') {
           timer.cancel();
           _esperandoRivalTimer?.cancel();
-          await _entrarAPartida(matchId, myTeamId);
+          await _entrarAPartida(matchId, myTeamId, opponentName: opponentName);
         }
       } finally {
         _isPollingMatch = false;
@@ -135,7 +135,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     });
   }
 
-  Future<void> _entrarAPartida(String matchId, String myTeamId) async {
+  Future<void> _entrarAPartida(String matchId, String myTeamId, {String? opponentName}) async {
     if (!mounted || _isEnteringMatch) return;
     _isEnteringMatch = true;
     _esperandoRivalTimer?.cancel();
@@ -160,6 +160,7 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
             matchId: matchId,
             myTeamId: myTeamId,
             opponentTeamId: opponentTeamId,
+            opponentName: opponentName,
             realtimeService: realtime,
           ),
         ),
@@ -176,7 +177,11 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     final res = await _desafioService.responderDesafio(d.id, aceptar, gamerTag: gamerTag);
     if (!mounted) return;
     if (res != null && aceptar && res['match_id'] != null) {
-      await _entrarAPartida(res['match_id'] as String, res['team_id'] as String);
+      await _entrarAPartida(
+        res['match_id'] as String,
+        res['team_id'] as String,
+        opponentName: d.solicitanteGamerTag,
+      );
     }
     _loadDesafios();
   }

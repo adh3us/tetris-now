@@ -522,6 +522,36 @@ class TetrisMatchService {
     });
   }
 
+  /// Calcula el cambio de ELO dinámico:
+  /// - Victoria: entre +60 y +100 puntos según rapidez e intensidad.
+  /// - Derrota: entre -50 y -90 puntos bajo el mismo criterio.
+  /// - Abandono: -90 puntos directos.
+  static int calcularEloDeltaGanador({
+    required double durationSeconds,
+    required int linesSent,
+    required int maxCombo,
+    required int linesCleared,
+  }) {
+    final speedFactor = ((180.0 - durationSeconds.clamp(30.0, 180.0)) / 150.0).clamp(0.0, 1.0);
+    final intensityFactor = ((linesSent / 12.0 * 0.5) + (maxCombo / 5.0 * 0.3) + (linesCleared / 20.0 * 0.2)).clamp(0.0, 1.0);
+    final bonus = (speedFactor * 20.0 + intensityFactor * 20.0).round();
+    return (60 + bonus).clamp(60, 100);
+  }
+
+  static int calcularEloDeltaPerdedor({
+    required double durationSeconds,
+    required int linesSent,
+    required int maxCombo,
+    required int linesCleared,
+    bool isSurrender = false,
+  }) {
+    if (isSurrender) return -90;
+    final speedFactor = ((180.0 - durationSeconds.clamp(30.0, 180.0)) / 150.0).clamp(0.0, 1.0);
+    final intensityFactor = ((linesSent / 12.0 * 0.5) + (maxCombo / 5.0 * 0.3) + (linesCleared / 20.0 * 0.2)).clamp(0.0, 1.0);
+    final penalty = (speedFactor * 20.0 + (1.0 - intensityFactor) * 20.0).round();
+    return -(50 + penalty).clamp(50, 90);
+  }
+
   Future<Map<String, dynamic>> reportMatchResult({
     required String matchId,
     required String winnerTeamId,
