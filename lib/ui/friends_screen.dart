@@ -177,10 +177,17 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     final res = await _desafioService.responderDesafio(d.id, aceptar, gamerTag: gamerTag);
     if (!mounted) return;
     if (res != null && aceptar && res['match_id'] != null) {
+      FriendModel? rival;
+      for (final f in _friends) {
+        if (f.userId == d.retadorId) {
+          rival = f;
+          break;
+        }
+      }
       await _entrarAPartida(
         res['match_id'] as String,
         res['team_id'] as String,
-        opponentName: d.solicitanteGamerTag,
+        opponentName: rival?.gamerTag,
       );
     }
     _loadDesafios();
