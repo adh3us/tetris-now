@@ -40,16 +40,27 @@ class LogroItem {
 }
 
 class LogrosService {
-  SupabaseClient get _client => SupabaseConfig.client;
+  SupabaseClient? get _client {
+    try {
+      return SupabaseConfig.client;
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Obtiene la lista completa del catálogo de logros combinada con el estado de desbloqueo del usuario
   Future<List<LogroItem>> getLogrosConEstadoUsuario([String? targetUserId]) async {
-    final user = _client.auth.currentUser;
+    final client = _client;
+    if (client == null) {
+      return _catalogoFallback.map((m) => LogroItem.fromMap(m)).toList();
+    }
+
+    final user = client.auth.currentUser;
     final uid = targetUserId ?? user?.id;
 
     List<Map<String, dynamic>> catalogo = [];
     try {
-      final res = await _client
+      final res = await client
           .schema('tetris')
           .from('logros')
           .select()
@@ -64,7 +75,7 @@ class LogrosService {
     final Map<String, DateTime> desbloqueadosMap = {};
     if (uid != null) {
       try {
-        final res = await _client
+        final res = await client
             .schema('tetris')
             .from('logros_desbloqueados')
             .select('logro_id, desbloqueado_en')
@@ -88,11 +99,13 @@ class LogrosService {
 
   /// Desbloquea un logro para el usuario autenticado actual
   Future<bool> desbloquearLogro(String logroId) async {
-    final user = _client.auth.currentUser;
+    final client = _client;
+    if (client == null) return false;
+    final user = client.auth.currentUser;
     if (user == null) return false;
 
     try {
-      await _client.schema('tetris').from('logros_desbloqueados').upsert(
+      await client.schema('tetris').from('logros_desbloqueados').upsert(
         {
           'user_id': user.id,
           'logro_id': logroId,
@@ -118,7 +131,9 @@ class LogrosService {
     required bool hasSilverCube,
     required bool isDuel,
   }) async {
-    final user = _client.auth.currentUser;
+    final client = _client;
+    if (client == null) return;
+    final user = client.auth.currentUser;
     if (user == null) return;
 
     if (linesCleared >= 4) {
