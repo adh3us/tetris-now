@@ -189,6 +189,11 @@ begin
     values ('1v1', v_team_1, v_team_2, 'in_progress', now())
     returning * into v_match;
 
+    -- Jugador 1 (esperando en la cola)
+    insert into tetris.match_tetris_players (match_id, team_id, user_id, gamer_tag)
+    values (v_match.id, v_team_1, v_rival.user_id, v_rival.gamer_tag);
+
+    -- Jugador 2 (recién ingresado)
     insert into tetris.match_tetris_players (match_id, team_id, user_id, gamer_tag)
     values (v_match.id, v_team_2, v_user_id, p_gamer_tag);
 
@@ -197,10 +202,6 @@ begin
       where user_id = v_rival.user_id;
 
     delete from tetris.matchmaking_queue where user_id = v_user_id;
-
-    insert into tetris.match_tetris_players (match_id, team_id, user_id, gamer_tag)
-    values (v_match.id, v_team_2, v_user_id, p_gamer_tag)
-    on conflict do nothing;
 
     return jsonb_build_object('status', 'matched', 'match_id', v_match.id, 'team_id', v_team_2);
   end if;

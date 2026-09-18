@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/friends_service.dart';
 import '../services/desafio_service.dart';
 import '../services/gameros_profile_service.dart';
@@ -34,6 +35,8 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   bool _isLoading = true;
   Timer? _desafiosPollTimer;
   Timer? _esperandoRivalTimer;
+  bool _isEnteringMatch = false;
+  bool _isPollingMatch = false;
 
   @override
   void initState() {
@@ -109,34 +112,56 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   /// siempre te trata como invitado (team_2), y acá el retador ya es team_1.
   void _esperarRivalYEntrar(String matchId, String myTeamId) {
     _esperandoRivalTimer?.cancel();
+    _isPollingMatch = false;
     _esperandoRivalTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      final estado = await _matchService.consultarEstadoMatch(matchId, myTeamId);
-      if (estado['status'] == 'matched') {
+      if (_isEnteringMatch) {
         timer.cancel();
-        await _entrarAPartida(matchId, myTeamId);
+        return;
+      }
+      if (_isPollingMatch) return;
+      _isPollingMatch = true;
+
+      try {
+        final estado = await _matchService.consultarEstadoMatch(matchId, myTeamId);
+        if (estado['status'] == 'matched') {
+          timer.cancel();
+          _esperandoRivalTimer?.cancel();
+          await _entrarAPartida(matchId, myTeamId);
+        }
+      } finally {
+        _isPollingMatch = false;
       }
     });
   }
 
   Future<void> _entrarAPartida(String matchId, String myTeamId) async {
-    if (!mounted) return;
-    final match = await _matchService.getMatch(matchId);
-    final opponentTeamId = myTeamId == match.team1Id ? match.team2Id : match.team1Id;
-    final userId = SupabaseConfig.client.auth.currentUser?.id ?? 'guest_player';
+    if (!mounted || _isEnteringMatch) return;
+    _isEnteringMatch = true;
+    _esperandoRivalTimer?.cancel();
 
-    final realtime = TetrisRealtimeService(
-      matchId: matchId,
-      myTeamId: myTeamId,
-      opponentTeamId: opponentTeamId,
-      currentUserId: userId,
-    );
+    try {
+      final match = await _matchService.getMatch(matchId);
+      final opponentTeamId = myTeamId == match.team1Id ? match.team2Id : match.team1Id;
+      final userId = SupabaseConfig.client.auth.currentUser?.id ?? 'guest_player';
 
-    if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => TetrisGameScreen(mode: GameMode.duel1v1, matchId: matchId, realtimeService: realtime),
-      ),
-    );
+      final realtime = TetrisRealtimeService(
+        matchId: matchId,
+        myTeamId: myTeamId,
+        opponentTeamId: opponentTeamId,
+        currentUserId: userId,
+      );
+
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TetrisGameScreen(mode: GameMode.duel1v1, matchId: matchId, realtimeService: realtime),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        _isEnteringMatch = false;
+      }
+    }
   }
 
   Future<void> _responderDesafio(DesafioModel d, bool aceptar) async {
@@ -319,15 +344,33 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                     '@${_profile!.username!}',
                     style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 10.5, fontWeight: FontWeight.w500),
                   ),
-                // Código en Amarillo Citrino brillante
+                // Código en Amarillo Citrino brillante (tocar para copiar)
                 if (_profile!.codigoJugador != null)
-                  Text(
-                    '#${_profile!.codigoJugador}',
-                    style: const TextStyle(
-                      color: Color(0xFFFACC15),
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5,
+                  InkWell(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: _profile!.codigoJugador!));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('¡Código #${_profile!.codigoJugador} copiado al portapapeles!'),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '#${_profile!.codigoJugador}',
+                          style: const TextStyle(
+                            color: Color(0xFFFACC15),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.copy_rounded, size: 12, color: Color(0xFFFACC15)),
+                      ],
                     ),
                   ),
               ],
@@ -1061,8 +1104,9 @@ class _AddFriendDialogState extends State<_AddFriendDialog> {
         TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('CANCELAR', style: TextStyle(color: Color(0xFF8B949E)))),
         ElevatedButton(
           onPressed: () {
-            final q = _controller.text.trim();
-            if (q.isNotEmpty) _sendTo(q, q);
+            final raw = _controller.text.trim();
+            final q = raw.replaceAll('#', '').trim().toUpperCase();
+            if (q.isNotEmpty) _sendTo(q, '#$q');
           },
           style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5865F2)),
           child: const Text('ENVIAR POR CÓDIGO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),

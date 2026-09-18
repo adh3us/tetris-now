@@ -94,12 +94,19 @@ class _HomeShellState extends State<HomeShell> {
         currentUserId: userId,
       );
 
-      if (!mounted) return;
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => TetrisGameScreen(mode: GameMode.duel1v1, matchId: matchId, realtimeService: realtime),
-        ),
-      );
+      _desafioPollTimer?.cancel();
+      try {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => TetrisGameScreen(mode: GameMode.duel1v1, matchId: matchId, realtimeService: realtime),
+          ),
+        );
+      } finally {
+        _mostrandoDesafio = false;
+        if (mounted && !widget.isGuest) {
+          _desafioPollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _checkIncomingDesafios());
+        }
+      }
     }
   }
 

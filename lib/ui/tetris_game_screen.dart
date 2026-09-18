@@ -1405,16 +1405,114 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
     super.dispose();
   }
 
+  Future<void> _confirmExitMatch() async {
+    if (_isMatchEnded) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final wasPaused = _engine.isPaused;
+    setState(() => _engine.isPaused = true);
+
+    final bool isMultiplayer = widget.matchId != null;
+
+    final shouldExit = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0F141C),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFFFF1744), width: 1.8),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFFF1744), size: 26),
+            SizedBox(width: 8),
+            Text(
+              '¿ABANDONAR PARTIDA?',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 15,
+                letterSpacing: 1.0,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          isMultiplayer
+              ? 'Si sales ahora, la partida se dará por perdida y se notificará al rival por abandono.'
+              : '¿Deseas salir al menú principal? Se perderá el progreso de tu partida actual.',
+          style: const TextStyle(
+            color: Color(0xFF94A3B8),
+            fontSize: 12.5,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              'CONTINUAR JUGANDO',
+              style: TextStyle(
+                color: Color(0xFF00E5FF),
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF1744),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            child: const Text(
+              'ABANDONAR',
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldExit == true) {
+      if (isMultiplayer) {
+        _handleGameOver();
+      } else {
+        _ticker.stop();
+        _engine.isGameOver = true;
+      }
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } else {
+      if (mounted && !wasPaused) {
+        setState(() => _engine.isPaused = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Focus(
-      focusNode: _focusNode,
-      autofocus: true,
-      onKeyEvent: _handleKeyEvent,
-      child: Scaffold(
-        backgroundColor: const Color(0xFF151820), // Carcasa gris oscuro texturizado mate de arcade
-        body: SafeArea(
-          child: _buildPortraitLayout(),
+    return PopScope(
+      canPop: _isMatchEnded,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await _confirmExitMatch();
+      },
+      child: Focus(
+        focusNode: _focusNode,
+        autofocus: true,
+        onKeyEvent: _handleKeyEvent,
+        child: Scaffold(
+          backgroundColor: const Color(0xFF151820), // Carcasa gris oscuro texturizado mate de arcade
+          body: SafeArea(
+            child: _buildPortraitLayout(),
+          ),
         ),
       ),
     );

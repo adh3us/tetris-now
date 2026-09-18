@@ -147,7 +147,7 @@ class TetrisMatchService {
       final pendingMatches = await supabase
           .schema('tetris')
           .from('match_tetris')
-          .select('*, match_tetris_players(*)')
+          .select('id, team_1_id, team_2_id, status, created_at')
           .eq('status', 'pending')
           .eq('format', '1v1')
           .gte('created_at', since)
@@ -156,10 +156,18 @@ class TetrisMatchService {
 
       if (pendingMatches is List && pendingMatches.isNotEmpty) {
         for (final m in pendingMatches) {
-          final players = (m['match_tetris_players'] as List? ?? []);
-          final isMeInMatch = players.any((p) => p['user_id'] == userId);
-          if (!isMeInMatch && players.length == 1) {
-            final matchId = m['id'] as String;
+          final matchId = m['id'] as String;
+          // Verificar si yo ya soy el creador de esta sala
+          final myPlayer = await supabase
+              .schema('tetris')
+              .from('match_tetris_players')
+              .select('id')
+              .eq('match_id', matchId)
+              .eq('user_id', userId)
+              .maybeSingle();
+
+          if (myPlayer == null) {
+            // Es la sala de un rival real en espera: nos unimos como team_2
             final team2Id = m['team_2_id'] as String;
 
             await supabase.schema('tetris').from('match_tetris_players').insert({
@@ -180,18 +188,19 @@ class TetrisMatchService {
               'team_id': team2Id,
               'is_host': false,
             };
-          } else if (isMeInMatch) {
-            if (m['status'] == 'in_progress' || players.length >= 2) {
+          } else {
+            // Ya estoy en esta sala; si ya cambió a in_progress iniciamos
+            if (m['status'] == 'in_progress') {
               return {
                 'status': 'matched',
-                'match_id': m['id'],
+                'match_id': matchId,
                 'team_id': m['team_1_id'],
                 'is_host': true,
               };
             }
             return {
               'status': 'waiting',
-              'match_id': m['id'],
+              'match_id': matchId,
               'team_id': m['team_1_id'],
               'is_host': true,
             };
@@ -227,12 +236,49 @@ class TetrisMatchService {
     };
   }
 
+  /// Consulta el estado del emparejamiento automático:
+  /// Verifica la cola mediante mi_estado_matchmaking y la sala en match_tetris.
+  Future<Map<String, dynamic>> consultarEstadoMatchmaking(String? matchId, String myTeamId) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return {'status': 'idle'};
+
+    // 1. Consultar RPC oficial de cola
+    try {
+      final res = await supabase.schema('tetris').rpc('mi_estado_matchmaking');
+      if (res != null && res is Map) {
+        final st = res['status'] as String?;
+        final mId = res['match_id'] as String?;
+        final tId = res['team_id'] as String?;
+        if (st == 'matched' && mId != null) {
+          return {
+            'status': 'matched',
+            'match_id': mId,
+            'team_id': tId ?? myTeamId,
+          };
+        } else if (st == 'waiting') {
+          return {
+            'status': 'waiting',
+            'match_id': mId ?? matchId,
+            'team_id': tId ?? myTeamId,
+          };
+        }
+      }
+    } catch (_) {}
+
+    // 2. Si hay matchId concreto, verificar en tabla match_tetris
+    if (matchId != null && matchId.isNotEmpty) {
+      return await consultarEstadoMatch(matchId, myTeamId);
+    }
+
+    return {'status': 'waiting', 'match_id': matchId, 'team_id': myTeamId};
+  }
+
   Future<Map<String, dynamic>> consultarEstadoMatch(String matchId, String myTeamId) async {
     try {
       final res = await supabase
           .schema('tetris')
           .from('match_tetris')
-          .select('status, match_tetris_players(*)')
+          .select('status, match_tetris_players(id, user_id)')
           .eq('id', matchId)
           .maybeSingle();
 
@@ -251,10 +297,15 @@ class TetrisMatchService {
     return {'status': 'waiting', 'match_id': matchId, 'team_id': myTeamId};
   }
 
-  Future<void> cancelarBusqueda(String matchId) async {
+  Future<void> cancelarBusqueda([String? matchId]) async {
     try {
-      await supabase.schema('tetris').from('match_tetris').delete().eq('id', matchId).eq('status', 'pending');
+      await supabase.schema('tetris').rpc('cancelar_busqueda');
     } catch (_) {}
+    if (matchId != null && matchId.isNotEmpty) {
+      try {
+        await supabase.schema('tetris').from('match_tetris').delete().eq('id', matchId).eq('status', 'pending');
+      } catch (_) {}
+    }
   }
 
   Future<TetrisMatchModel> createMatch({

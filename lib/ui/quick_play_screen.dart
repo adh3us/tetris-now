@@ -64,16 +64,16 @@ class _QuickPlayScreenState extends State<QuickPlayScreen> with SingleTickerProv
 
       if (status == 'matched' && matchId != null) {
         _entrarAPartida(matchId, teamId ?? 'team_1');
-      } else if (status == 'waiting' && matchId != null) {
+      } else if (status == 'waiting') {
         _pollTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
           if (_isCancelled) {
             timer.cancel();
             return;
           }
-          final pollRes = await _matchService.consultarEstadoMatch(matchId, teamId ?? 'team_1');
-          if (pollRes['status'] == 'matched') {
+          final pollRes = await _matchService.consultarEstadoMatchmaking(_currentMatchId, _myTeamId ?? 'team_1');
+          if (pollRes['status'] == 'matched' && pollRes['match_id'] != null) {
             timer.cancel();
-            _entrarAPartida(matchId, teamId ?? 'team_1');
+            _entrarAPartida(pollRes['match_id'] as String, pollRes['team_id'] as String? ?? _myTeamId ?? 'team_1');
           }
         });
       }
@@ -121,9 +121,7 @@ class _QuickPlayScreenState extends State<QuickPlayScreen> with SingleTickerProv
     _pollTimer?.cancel();
     _radarController.stop();
 
-    if (_currentMatchId != null) {
-      await _matchService.cancelarBusqueda(_currentMatchId!);
-    }
+    await _matchService.cancelarBusqueda(_currentMatchId);
 
     if (mounted) {
       Navigator.of(context).pop();

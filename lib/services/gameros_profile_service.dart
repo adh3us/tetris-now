@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_config.dart';
 
@@ -67,24 +68,47 @@ class GamerosProfileService {
           .maybeSingle();
 
       if (userRow != null) {
-        // Columnas reales confirmadas por el equipo de Gameros (13/09/2026):
-        // 'nombre_display' (no 'nombre'/'nombre_completo'/'display_name'/'gamertag'),
-        // 'username', 'foto_url', 'codigo_jugador' (código único de 6
-        // caracteres para agregar amigos). 'nivel'/'reputacion' no existen
-        // como columnas reales en public.usuarios — se dejan en su valor
-        // por defecto, no se muestran como si vinieran de Gameros.
         displayName = userRow['nombre_display'] ?? displayName;
         username = userRow['username'] ?? username;
         avatarUrl = userRow['foto_url'] ?? avatarUrl;
         codigoJugador = userRow['codigo_jugador'] as String?;
+
+        // Si ya existe pero aún no tiene código de amigo, se lo generamos y guardamos
+        if (codigoJugador == null || codigoJugador.trim().isEmpty) {
+          codigoJugador = await _generateUniquePlayerCode();
+          try {
+            await supabase.from('usuarios').update({
+              'codigo_jugador': codigoJugador,
+            }).eq('id', user.id);
+          } catch (_) {}
+        }
+      } else {
+        // Auto-registro en GamerOS: el usuario se creó en Tetris Now
+        // pero nunca en GamerOS. Lo sincronizamos automáticamente en public.usuarios.
+        codigoJugador = await _generateUniquePlayerCode();
+        final defaultUsername = username ?? (user.email?.split('@').first ?? 'jugador');
+        try {
+          await supabase.from('usuarios').insert({
+            'id': user.id,
+            'nombre_display': displayName,
+            'username': defaultUsername,
+            'foto_url': avatarUrl,
+            'codigo_jugador': codigoJugador,
+          });
+          username = defaultUsername;
+        } catch (_) {
+          try {
+            await supabase.from('usuarios').upsert({
+              'id': user.id,
+              'nombre_display': displayName,
+              'codigo_jugador': codigoJugador,
+            });
+          } catch (_) {}
+        }
       }
     } catch (_) {}
 
-    // 2. Consultar Clan en Gameros Core (public.clanes / public.miembros_clan,
-    //    no 'equipos'/'miembros_equipo' — esa tabla no existe). Columnas
-    //    verificadas contra lib/clanes.dart del repo de Gameros: la fila de
-    //    membresía usa 'usuario_id' y 'clan_id', el estado activo es
-    //    'estado' = 'activo', y clanes solo tiene 'nombre' (no existe 'tag').
+    // 2. Consultar Clan en Gameros Core (public.clanes / public.miembros_clan)
     try {
       final memberRow = await supabase
           .from('miembros_clan')
@@ -99,7 +123,7 @@ class GamerosProfileService {
       }
     } catch (_) {}
 
-    // 3. Consultar rating ELO propio en esquema tetris
+    // 3. Consultar rating ELO propio en esquema tetris (asegura fila inicial)
     int elo = 1000;
     int matches = 0;
     int wins = 0;
@@ -118,6 +142,16 @@ class GamerosProfileService {
         matches = ratingRow['matches_played'] as int? ?? 0;
         wins = ratingRow['wins'] as int? ?? 0;
         losses = ratingRow['losses'] as int? ?? 0;
+      } else {
+        try {
+          await supabase.schema('tetris').from('ratings').insert({
+            'user_id': user.id,
+            'rating': 1000,
+            'matches_played': 0,
+            'wins': 0,
+            'losses': 0,
+          });
+        } catch (_) {}
       }
     } catch (_) {}
 
@@ -137,5 +171,27 @@ class GamerosProfileService {
       clanTag: clanTag,
       codigoJugador: codigoJugador,
     );
+  }
+
+  /// Genera un código alfanumérico único de 6 caracteres (ej: K7N9P2) para el sistema de amigos
+  Future<String> _generateUniquePlayerCode() async {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final rng = Random();
+    for (int attempt = 0; attempt < 5; attempt++) {
+      final code = List.generate(6, (_) => chars[rng.nextInt(chars.length)]).join();
+      try {
+        final existing = await supabase
+            .from('usuarios')
+            .select('id')
+            .eq('codigo_jugador', code)
+            .maybeSingle();
+        if (existing == null) {
+          return code;
+        }
+      } catch (_) {
+        return code;
+      }
+    }
+    return List.generate(6, (_) => chars[rng.nextInt(chars.length)]).join();
   }
 }
