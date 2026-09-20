@@ -6,6 +6,7 @@ import '../services/desafio_service.dart';
 import '../services/gameros_profile_service.dart';
 import '../services/tetris_match_service.dart';
 import '../services/tetris_realtime_service.dart';
+import '../services/presence_service.dart';
 import '../core/supabase_config.dart';
 import '../game/tetris_types.dart';
 import 'profile_modal.dart';
@@ -43,13 +44,19 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    PresenceService.instance.statusesNotifier.addListener(_onPresenceChanged);
     _loadData();
-    if (widget.embedded) _loadProfile();
+    _loadProfile();
     _desafiosPollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _loadDesafios());
+  }
+
+  void _onPresenceChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    PresenceService.instance.statusesNotifier.removeListener(_onPresenceChanged);
     _desafiosPollTimer?.cancel();
     _esperandoRivalTimer?.cancel();
     _tabController.dispose();
@@ -59,7 +66,10 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   Future<void> _loadProfile() async {
     try {
       final p = await _profileService.getFullProfile();
-      if (p != null && mounted) setState(() => _profile = p);
+      if (p != null && mounted) {
+        setState(() => _profile = p);
+        PresenceService.instance.startTracking(userId: p.id, gamerTag: p.displayName);
+      }
     } catch (_) {}
   }
 
@@ -353,16 +363,24 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Nombre en cian vibrante
-                Text(
-                  '${_profile!.clanTag != null ? '[${_profile!.clanTag}] ' : ''}${_profile!.displayName}',
-                  style: const TextStyle(
-                    color: Color(0xFF00E5FF),
-                    fontWeight: FontWeight.w900,
-                    fontSize: 13.5,
-                    letterSpacing: 0.5,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                // Nombre en cian vibrante con indicador de presencia
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        '${_profile!.clanTag != null ? '[${_profile!.clanTag}] ' : ''}${_profile!.displayName}',
+                        style: const TextStyle(
+                          color: Color(0xFF00E5FF),
+                          fontWeight: FontWeight.w900,
+                          fontSize: 13.5,
+                          letterSpacing: 0.5,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const UserStatusDot(status: UserPresenceStatus.online, size: 8),
+                  ],
                 ),
                 if (_profile!.username != null)
                   Text(
@@ -593,16 +611,27 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Nombre de usuario en cian vibrante
-                    Text(
-                      f.gamerTag,
-                      style: const TextStyle(
-                        color: Color(0xFF00E5FF),
-                        fontWeight: FontWeight.w900,
-                        fontSize: 13.5,
-                        letterSpacing: 0.5,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                    // Nombre de usuario en cian vibrante con estado de presencia
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            f.gamerTag,
+                            style: const TextStyle(
+                              color: Color(0xFF00E5FF),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 13.5,
+                              letterSpacing: 0.5,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        UserStatusDot(
+                          status: PresenceService.instance.getStatusForUser(f.userId),
+                          size: 8,
+                        ),
+                      ],
                     ),
                     if (f.username != null) ...[
                       const SizedBox(height: 1),
@@ -1112,7 +1141,18 @@ class _AddFriendDialogState extends State<_AddFriendDialog> {
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.account_circle, color: Color(0xFF818CF8)),
-                      title: Text(r.displayName, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                      title: Row(
+                        children: [
+                          Flexible(
+                            child: Text(r.displayName, style: const TextStyle(color: Colors.white, fontSize: 13), overflow: TextOverflow.ellipsis),
+                          ),
+                          const SizedBox(width: 6),
+                          UserStatusDot(
+                            status: PresenceService.instance.getStatusForUser(r.id),
+                            size: 7,
+                          ),
+                        ],
+                      ),
                       subtitle: r.username != null ? Text(r.username!, style: const TextStyle(color: Color(0xFF818CF8), fontSize: 11)) : null,
                       trailing: IconButton(
                         icon: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF5865F2)),

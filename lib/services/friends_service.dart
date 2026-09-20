@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_config.dart';
+import 'presence_service.dart';
 
 class FriendModel {
   final String friendshipId;
@@ -8,6 +9,7 @@ class FriendModel {
   final String? username;
   final String? avatarUrl;
   final int tetrisElo;
+  final UserPresenceStatus presenceStatus;
 
   FriendModel({
     required this.friendshipId,
@@ -16,6 +18,7 @@ class FriendModel {
     this.username,
     this.avatarUrl,
     this.tetrisElo = 1000,
+    this.presenceStatus = UserPresenceStatus.offline,
   });
 }
 
@@ -40,8 +43,15 @@ class UserSearchResult {
   final String displayName;
   final String? username;
   final String? avatarUrl;
+  final UserPresenceStatus presenceStatus;
 
-  UserSearchResult({required this.id, required this.displayName, this.username, this.avatarUrl});
+  UserSearchResult({
+    required this.id,
+    required this.displayName,
+    this.username,
+    this.avatarUrl,
+    this.presenceStatus = UserPresenceStatus.offline,
+  });
 }
 
 class FriendsService {
@@ -65,16 +75,18 @@ class FriendsService {
         String tag = 'Jugador Gameros';
         String? username;
         String? avatar;
+        String? estadoJuego;
+        DateTime? updatedAt;
         int elo = 1000;
 
         try {
-          // Columnas reales de public.usuarios confirmadas por el equipo de
-          // Gameros: 'nombre_display', 'username', 'foto_url'.
           final uRow = await supabase.from('usuarios').select().eq('id', friendUserId).maybeSingle();
           if (uRow != null) {
             tag = uRow['nombre_display'] as String? ?? tag;
             username = uRow['username'] as String?;
             avatar = uRow['foto_url'] as String?;
+            estadoJuego = uRow['estado_juego'] as String?;
+            updatedAt = DateTime.tryParse(uRow['updated_at']?.toString() ?? '');
           }
         } catch (_) {}
 
@@ -83,6 +95,12 @@ class FriendsService {
           if (rRow != null) elo = rRow['rating'] as int? ?? 1000;
         } catch (_) {}
 
+        final pStatus = PresenceService.instance.getStatusForUser(
+          friendUserId as String,
+          dbEstado: estadoJuego,
+          dbUpdatedAt: updatedAt,
+        );
+
         friends.add(FriendModel(
           friendshipId: row['id'] as String,
           userId: friendUserId as String,
@@ -90,6 +108,7 @@ class FriendsService {
           username: username,
           avatarUrl: avatar,
           tetrisElo: elo,
+          presenceStatus: pStatus,
         ));
       }
 

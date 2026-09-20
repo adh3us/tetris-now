@@ -123,18 +123,25 @@ class TetrisMatchService {
     final user = supabase.auth.currentUser;
     if (user == null) throw Exception('Debes iniciar sesión para buscar partida');
 
+    // 1. Limpieza preventiva de cola previa estancada
     try {
-      // Firma real desplegada en Supabase (supabase/0002_matchmaking_seguridad.sql):
-      // tetris.buscar_partida_automatica(p_gamer_tag TEXT) — el usuario se
-      // identifica con auth.uid() adentro de la función, no por parámetro.
+      await supabase.schema('tetris').from('matchmaking_queue').delete().eq('user_id', user.id);
+    } catch (_) {}
+
+    try {
+      // Intentar RPC oficial
       final res = await supabase.schema('tetris').rpc('buscar_partida_automatica', params: {
         'p_gamer_tag': gamerTag,
       });
       if (res != null && res is Map) {
-        return Map<String, dynamic>.from(res);
+        final map = Map<String, dynamic>.from(res);
+        final status = map['status'] as String?;
+        if (status == 'matched' || status == 'waiting') {
+          return map;
+        }
       }
     } catch (_) {
-      // Red de seguridad si la función no está desplegada en este entorno.
+      // Red de seguridad si la función no está desplegada o arroja error
       return await _matchmakingDirecto(user.id, gamerTag);
     }
 
@@ -169,6 +176,7 @@ class TetrisMatchService {
           if (myPlayer == null) {
             // Es la sala de un rival real en espera: nos unimos como team_2
             final team2Id = m['team_2_id'] as String;
+            final team1Id = m['team_1_id'] as String;
 
             await supabase.schema('tetris').from('match_tetris_players').insert({
               'match_id': matchId,
@@ -182,10 +190,22 @@ class TetrisMatchService {
               'started_at': DateTime.now().toIso8601String(),
             }).eq('id', matchId);
 
+            // Notificar al canal Realtime para despertar instantáneamente al host
+            try {
+              final ch = supabase.channel('match:$matchId');
+              await ch.subscribe();
+              await ch.sendBroadcastMessage(event: 'match_start', payload: {
+                'match_id': matchId,
+                'team_1_id': team1Id,
+                'team_2_id': team2Id,
+              });
+            } catch (_) {}
+
             return {
               'status': 'matched',
               'match_id': matchId,
               'team_id': team2Id,
+              'opponent_team_id': team1Id,
               'is_host': false,
             };
           } else {
@@ -195,6 +215,7 @@ class TetrisMatchService {
                 'status': 'matched',
                 'match_id': matchId,
                 'team_id': m['team_1_id'],
+                'opponent_team_id': m['team_2_id'],
                 'is_host': true,
               };
             }
@@ -202,6 +223,7 @@ class TetrisMatchService {
               'status': 'waiting',
               'match_id': matchId,
               'team_id': m['team_1_id'],
+              'opponent_team_id': m['team_2_id'],
               'is_host': true,
             };
           }
@@ -232,17 +254,26 @@ class TetrisMatchService {
       'status': 'waiting',
       'match_id': matchId,
       'team_id': team1Uuid,
+      'opponent_team_id': team2Uuid,
       'is_host': true,
     };
   }
 
   /// Consulta el estado del emparejamiento automático:
-  /// Verifica la cola mediante mi_estado_matchmaking y la sala en match_tetris.
+  /// 1. Verifica prioritariamente la tabla match_tetris si se dispone de matchId.
+  /// 2. Consulta la RPC mi_estado_matchmaking.
+  /// 3. Chequea salas activas recientes del usuario.
   Future<Map<String, dynamic>> consultarEstadoMatchmaking(String? matchId, String myTeamId) async {
     final user = supabase.auth.currentUser;
     if (user == null) return {'status': 'idle'};
 
-    // 1. Consultar RPC oficial de cola
+    // 1. Si hay matchId concreto, verificar directamente en tabla match_tetris
+    if (matchId != null && matchId.isNotEmpty) {
+      final st = await consultarEstadoMatch(matchId, myTeamId);
+      if (st['status'] == 'matched') return st;
+    }
+
+    // 2. Consultar RPC oficial de cola
     try {
       final res = await supabase.schema('tetris').rpc('mi_estado_matchmaking');
       if (res != null && res is Map) {
@@ -250,25 +281,41 @@ class TetrisMatchService {
         final mId = res['match_id'] as String?;
         final tId = res['team_id'] as String?;
         if (st == 'matched' && mId != null) {
-          return {
-            'status': 'matched',
-            'match_id': mId,
-            'team_id': tId ?? myTeamId,
-          };
-        } else if (st == 'waiting') {
+          final matchCheck = await consultarEstadoMatch(mId, tId ?? myTeamId);
+          return matchCheck;
+        } else if (st == 'waiting' && mId != null && mId != matchId) {
+          final matchCheck = await consultarEstadoMatch(mId, tId ?? myTeamId);
+          if (matchCheck['status'] == 'matched') return matchCheck;
           return {
             'status': 'waiting',
-            'match_id': mId ?? matchId,
+            'match_id': mId,
             'team_id': tId ?? myTeamId,
           };
         }
       }
     } catch (_) {}
 
-    // 2. Si hay matchId concreto, verificar en tabla match_tetris
-    if (matchId != null && matchId.isNotEmpty) {
-      return await consultarEstadoMatch(matchId, myTeamId);
-    }
+    // 3. Fallback: Chequear si alguna sala reciente en la que participé ya está en progreso
+    try {
+      final myPlayerRows = await supabase
+          .schema('tetris')
+          .from('match_tetris_players')
+          .select('match_id, team_id')
+          .eq('user_id', user.id)
+          .order('created_at', ascending: false)
+          .limit(3);
+
+      if (myPlayerRows is List && myPlayerRows.isNotEmpty) {
+        for (final row in myPlayerRows) {
+          final foundMatchId = row['match_id'] as String?;
+          final foundTeamId = row['team_id'] as String?;
+          if (foundMatchId != null) {
+            final matchCheck = await consultarEstadoMatch(foundMatchId, foundTeamId ?? myTeamId);
+            if (matchCheck['status'] == 'matched') return matchCheck;
+          }
+        }
+      }
+    } catch (_) {}
 
     return {'status': 'waiting', 'match_id': matchId, 'team_id': myTeamId};
   }
@@ -278,18 +325,47 @@ class TetrisMatchService {
       final res = await supabase
           .schema('tetris')
           .from('match_tetris')
-          .select('status, match_tetris_players(id, user_id)')
+          .select('id, status, team_1_id, team_2_id')
           .eq('id', matchId)
           .maybeSingle();
 
       if (res != null) {
         final status = res['status'] as String?;
-        final players = res['match_tetris_players'] as List? ?? [];
-        if (status == 'in_progress' || players.length >= 2) {
+        final t1 = res['team_1_id'] as String? ?? '';
+        final t2 = res['team_2_id'] as String? ?? '';
+
+        if (status == 'in_progress') {
+          final resolvedTeam = myTeamId.isNotEmpty ? myTeamId : t1;
+          final opponentTeam = resolvedTeam == t1 ? t2 : t1;
           return {
             'status': 'matched',
             'match_id': matchId,
-            'team_id': myTeamId,
+            'team_id': resolvedTeam,
+            'opponent_team_id': opponentTeam,
+          };
+        }
+
+        // Si sigue en 'pending', chequear si ya hay 2 jugadores inscritos en la sala
+        final playersRes = await supabase
+            .schema('tetris')
+            .from('match_tetris_players')
+            .select('id, team_id, user_id')
+            .eq('match_id', matchId);
+
+        if (playersRes is List && playersRes.length >= 2) {
+          // Ambos están adentro: activar la partida inmediatamente
+          await supabase.schema('tetris').from('match_tetris').update({
+            'status': 'in_progress',
+            'started_at': DateTime.now().toIso8601String(),
+          }).eq('id', matchId);
+
+          final resolvedTeam = myTeamId.isNotEmpty ? myTeamId : t1;
+          final opponentTeam = resolvedTeam == t1 ? t2 : t1;
+          return {
+            'status': 'matched',
+            'match_id': matchId,
+            'team_id': resolvedTeam,
+            'opponent_team_id': opponentTeam,
           };
         }
       }
@@ -297,7 +373,21 @@ class TetrisMatchService {
     return {'status': 'waiting', 'match_id': matchId, 'team_id': myTeamId};
   }
 
+  Future<void> limpiarMiColaMatchmaking() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+    try {
+      await supabase.schema('tetris').from('matchmaking_queue').delete().eq('user_id', user.id);
+    } catch (_) {}
+  }
+
   Future<void> cancelarBusqueda([String? matchId]) async {
+    final user = supabase.auth.currentUser;
+    if (user != null) {
+      try {
+        await supabase.schema('tetris').from('matchmaking_queue').delete().eq('user_id', user.id);
+      } catch (_) {}
+    }
     try {
       await supabase.schema('tetris').rpc('cancelar_busqueda');
     } catch (_) {}
@@ -557,13 +647,51 @@ class TetrisMatchService {
     required String winnerTeamId,
     Map<String, dynamic>? payload,
   }) async {
-    final res = await supabase.rpc('reportar_resultado_partida_externa', params: {
-      'p_juego_nombre': 'Tetris Now',
-      'p_match_id': matchId,
-      'p_winner_team_id': winnerTeamId,
-      'p_payload': payload ?? {},
-    });
+    try {
+      final res = await supabase.rpc('reportar_resultado_partida_externa', params: {
+        'p_juego_nombre': 'Tetris Now',
+        'p_match_id': matchId,
+        'p_winner_team_id': winnerTeamId,
+        'p_payload': payload ?? {},
+      });
 
-    return Map<String, dynamic>.from(res as Map);
+      if (res != null && res is Map) {
+        final map = Map<String, dynamic>.from(res);
+        if (map['status'] == 'finished' || map['success'] == true) {
+          return map;
+        }
+      }
+    } catch (_) {}
+
+    // Fallback: Si el reporte externo quedó en disputa, pendiente o falló,
+    // resolvemos los IDs de participantes y aplicamos la actualización ELO directamente
+    try {
+      final players = await getMatchPlayers(matchId);
+      if (players.length >= 2) {
+        final winner = players.firstWhere((p) => p.teamId == winnerTeamId, orElse: () => players.first);
+        final loser = players.firstWhere((p) => p.teamId != winnerTeamId, orElse: () => players.last);
+
+        if (winner.userId != loser.userId) {
+          final eloRes = await supabase.schema('tetris').rpc('actualizar_rating_elo', params: {
+            'p_winner_user_id': winner.userId,
+            'p_loser_user_id': loser.userId,
+            'p_payload': payload ?? {},
+          });
+
+          await supabase.schema('tetris').from('match_tetris').update({
+            'status': 'finished',
+            'winner_team_id': winnerTeamId,
+            'ended_at': DateTime.now().toIso8601String(),
+          }).eq('id', matchId);
+
+          if (eloRes != null && eloRes is Map) {
+            return Map<String, dynamic>.from(eloRes);
+          }
+          return {'status': 'finished', 'winner_team_id': winnerTeamId};
+        }
+      }
+    } catch (_) {}
+
+    return {'status': 'reported'};
   }
 }

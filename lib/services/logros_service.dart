@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_config.dart';
 
@@ -48,32 +50,51 @@ class LogrosService {
     }
   }
 
-  /// Obtiene la lista completa del catálogo de logros combinada con el estado de desbloqueo del usuario
+  /// Obtiene la lista completa del catálogo de logros combinada con el estado de desbloqueo del usuario.
+  /// Lee de SharedPreferences local (garantía 100% inmediata) y sincroniza con Supabase si está disponible.
   Future<List<LogroItem>> getLogrosConEstadoUsuario([String? targetUserId]) async {
     final client = _client;
-    if (client == null) {
-      return _catalogoFallback.map((m) => LogroItem.fromMap(m)).toList();
-    }
-
-    final user = client.auth.currentUser;
-    final uid = targetUserId ?? user?.id;
+    final user = client?.auth.currentUser;
+    final uid = targetUserId ?? user?.id ?? 'local_user';
 
     List<Map<String, dynamic>> catalogo = [];
     try {
-      final res = await client
-          .schema('tetris')
-          .from('logros')
-          .select()
-          .order('orden', ascending: true);
-      catalogo = List<Map<String, dynamic>>.from(res as List);
+      if (client != null) {
+        final res = await client
+            .schema('tetris')
+            .from('logros')
+            .select()
+            .order('orden', ascending: true);
+        if (res is List && res.isNotEmpty) {
+          catalogo = List<Map<String, dynamic>>.from(res);
+        } else {
+          catalogo = _catalogoFallback;
+        }
+      } else {
+        catalogo = _catalogoFallback;
+      }
     } catch (_) {
       // Fallback con catálogo local si las tablas en Supabase aún están recién creadas
       catalogo = _catalogoFallback;
     }
 
-    // Consultar desbloqueados
     final Map<String, DateTime> desbloqueadosMap = {};
-    if (uid != null) {
+
+    // 1. Cargar desbloqueados locales desde SharedPreferences
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final localJson = prefs.getString('tetris_logros_unlocked_$uid');
+      if (localJson != null && localJson.isNotEmpty) {
+        final Map<String, dynamic> decoded = jsonDecode(localJson);
+        decoded.forEach((key, val) {
+          final dt = DateTime.tryParse(val?.toString() ?? '') ?? DateTime.now();
+          desbloqueadosMap[key] = dt;
+        });
+      }
+    } catch (_) {}
+
+    // 2. Consultar desbloqueados remotos en Supabase (si existe la tabla)
+    if (client != null && uid != 'local_user') {
       try {
         final res = await client
             .schema('tetris')
@@ -97,28 +118,45 @@ class LogrosService {
     }).toList();
   }
 
-  /// Desbloquea un logro para el usuario autenticado actual
+  /// Desbloquea un logro para el usuario autenticado actual con persistencia local garantizada
   Future<bool> desbloquearLogro(String logroId) async {
     final client = _client;
-    if (client == null) return false;
-    final user = client.auth.currentUser;
-    if (user == null) return false;
+    final user = client?.auth.currentUser;
+    final uid = user?.id ?? 'local_user';
+    final nowIso = DateTime.now().toIso8601String();
 
+    // 1. Guardar de forma inmediata e infalible en SharedPreferences local
     try {
-      await client.schema('tetris').from('logros_desbloqueados').upsert(
-        {
-          'user_id': user.id,
-          'logro_id': logroId,
-          'completado': true,
-          'desbloqueado_en': DateTime.now().toIso8601String(),
-        },
-        onConflict: 'user_id,logro_id',
-        ignoreDuplicates: true,
-      );
-      return true;
-    } catch (_) {
-      return false;
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'tetris_logros_unlocked_$uid';
+      Map<String, dynamic> unlocked = {};
+      final localJson = prefs.getString(key);
+      if (localJson != null && localJson.isNotEmpty) {
+        try {
+          unlocked = Map<String, dynamic>.from(jsonDecode(localJson));
+        } catch (_) {}
+      }
+      unlocked[logroId] = nowIso;
+      await prefs.setString(key, jsonEncode(unlocked));
+    } catch (_) {}
+
+    // 2. Asincrónicamente intentar persistir en Supabase tetris.logros_desbloqueados
+    if (client != null && user != null) {
+      try {
+        await client.schema('tetris').from('logros_desbloqueados').upsert(
+          {
+            'user_id': user.id,
+            'logro_id': logroId,
+            'completado': true,
+            'desbloqueado_en': nowIso,
+          },
+          onConflict: 'user_id,logro_id',
+          ignoreDuplicates: true,
+        );
+      } catch (_) {}
     }
+
+    return true;
   }
 
   /// Verifica y desbloquea automáticamente logros basados en las métricas de una partida
@@ -132,9 +170,8 @@ class LogrosService {
     required bool isDuel,
   }) async {
     final client = _client;
-    if (client == null) return;
-    final user = client.auth.currentUser;
-    if (user == null) return;
+    final user = client?.auth.currentUser;
+    final uid = user?.id ?? 'local_user';
 
     if (linesCleared >= 4) {
       await desbloquearLogro('primer_tetris');
@@ -151,12 +188,30 @@ class LogrosService {
     if (hasSilverCube) {
       await desbloquearLogro('cubo_plata');
     }
+
     if (isDuel) {
       await desbloquearLogro('primer_duelo');
-      if (isWinner) {
-        await desbloquearLogro('primera_victoria');
-        if (currentHp > 0 && currentHp <= 20) {
-          await desbloquearLogro('pared_de_hierro');
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final streakKey = 'tetris_duel_win_streak_$uid';
+        int streak = prefs.getInt(streakKey) ?? 0;
+
+        if (isWinner) {
+          streak++;
+          await prefs.setInt(streakKey, streak);
+          await desbloquearLogro('primera_victoria');
+          if (streak >= 3) {
+            await desbloquearLogro('racha_3_victorias');
+          }
+          if (currentHp > 0 && currentHp <= 20) {
+            await desbloquearLogro('pared_de_hierro');
+          }
+        } else {
+          await prefs.setInt(streakKey, 0);
+        }
+      } catch (_) {
+        if (isWinner) {
+          await desbloquearLogro('primera_victoria');
         }
       }
     }

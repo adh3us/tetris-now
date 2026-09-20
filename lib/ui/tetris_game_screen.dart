@@ -11,8 +11,18 @@ import '../services/audio_service.dart';
 import '../services/logros_service.dart';
 import '../services/tetris_match_service.dart';
 import '../services/tetris_realtime_service.dart';
+import '../services/presence_service.dart';
 import 'virtual_controller.dart';
 
+
+int generateDeterministicSeed(String input) {
+  int hash = 0x811c9dc5;
+  for (final unit in input.codeUnits) {
+    hash ^= unit;
+    hash = (hash * 0x01000193) & 0x7FFFFFFF;
+  }
+  return hash;
+}
 
 /// Partícula luminosa de impacto y destrucción (Fase D3-1)
 class VfxParticle {
@@ -108,8 +118,11 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
   int _maxCombo = 0;
   double _comboPulseScale = 1.0;
 
-  String? get _effectiveMyTeamId => widget.myTeamId ?? widget.realtimeService?.myTeamId;
-  String? get _effectiveOpponentTeamId => widget.opponentTeamId ?? widget.realtimeService?.opponentTeamId;
+  String? _resolvedMyTeamId;
+  String? _resolvedOpponentTeamId;
+
+  String? get _effectiveMyTeamId => _resolvedMyTeamId ?? widget.myTeamId ?? widget.realtimeService?.myTeamId;
+  String? get _effectiveOpponentTeamId => _resolvedOpponentTeamId ?? widget.opponentTeamId ?? widget.realtimeService?.opponentTeamId;
 
   void _showMapSelectorModal(BuildContext context) {
     showModalBottomSheet(
@@ -375,6 +388,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
 
   bool _isMatchEnded = false;
   String? _opponentDisplayName;
+  String? _opponentUserId;
   int _appliedEloDelta = 0;
   bool _isWinnerResult = false;
   List<List<int>> _opponentGrid = [];
@@ -385,15 +399,40 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
     if (widget.matchId == null) return;
     try {
       final myId = SupabaseConfig.client.auth.currentUser?.id;
+
+      // 1. Resolver el teamId propio desde match_tetris_players
+      if (myId != null) {
+        final myRow = await SupabaseConfig.client
+            .schema('tetris')
+            .from('match_tetris_players')
+            .select('team_id')
+            .eq('match_id', widget.matchId!)
+            .eq('user_id', myId)
+            .maybeSingle();
+        if (myRow != null && myRow['team_id'] != null) {
+          _resolvedMyTeamId = myRow['team_id'] as String?;
+        }
+      }
+
+      // 2. Resolver info del rival y su team_id
       final rows = await SupabaseConfig.client
           .schema('tetris')
           .from('match_tetris_players')
-          .select('user_id, gamer_tag')
+          .select('user_id, gamer_tag, team_id')
           .eq('match_id', widget.matchId!)
           .neq('user_id', myId ?? '');
+
       if (rows.isNotEmpty) {
         final tag = rows.first['gamer_tag'] as String?;
         final oppId = rows.first['user_id'] as String?;
+        final oppTeam = rows.first['team_id'] as String?;
+        if (oppId != null) {
+          _opponentUserId = oppId;
+        }
+        if (oppTeam != null && oppTeam.isNotEmpty) {
+          _resolvedOpponentTeamId = oppTeam;
+        }
+
         if (tag != null && tag.isNotEmpty && mounted) {
           setState(() => _opponentDisplayName = tag);
         }
@@ -411,12 +450,35 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
           }
         }
       }
+
+      // 3. Si aún falta alguno, resolver desde match_tetris (team_1_id / team_2_id)
+      if (_resolvedMyTeamId == null || _resolvedOpponentTeamId == null) {
+        final mRow = await SupabaseConfig.client
+            .schema('tetris')
+            .from('match_tetris')
+            .select('team_1_id, team_2_id')
+            .eq('id', widget.matchId!)
+            .maybeSingle();
+        if (mRow != null) {
+          final t1 = mRow['team_1_id'] as String?;
+          final t2 = mRow['team_2_id'] as String?;
+          if (_resolvedMyTeamId != null) {
+            _resolvedOpponentTeamId ??= (_resolvedMyTeamId == t1 ? t2 : t1);
+          } else if (_resolvedOpponentTeamId != null) {
+            _resolvedMyTeamId ??= (_resolvedOpponentTeamId == t1 ? t2 : t1);
+          } else {
+            _resolvedMyTeamId = t1;
+            _resolvedOpponentTeamId = t2;
+          }
+        }
+      }
     } catch (_) {}
   }
 
   @override
   void initState() {
     super.initState();
+    PresenceService.instance.statusesNotifier.addListener(_onPresenceChanged);
     _opponentDisplayName = widget.opponentName;
     if (widget.matchId != null) {
       _fetchOpponentInfo();
@@ -429,10 +491,15 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       DeviceOrientation.portraitUp,
     ]);
 
+    final matchSeed = widget.matchId != null && widget.matchId!.trim().isNotEmpty
+        ? generateDeterministicSeed(widget.matchId!.trim())
+        : null;
+
     _engine = TetrisEngine(
       cols: widget.mode == GameMode.coop2v2Wide ? 20 : 10,
       rows: 20,
       mode: widget.mode,
+      randomSeed: matchSeed,
     );
     _lastMyHp = _engine.currentHp;
     _lastScore = _engine.score;
@@ -1202,6 +1269,27 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
 
     _appliedEloDelta = isWinner ? winnerDelta : loserDelta;
 
+    if (widget.matchId != null) {
+      final myTeam = _effectiveMyTeamId;
+      final oppTeam = _effectiveOpponentTeamId;
+      final winnerTeam = isWinner ? myTeam : oppTeam;
+      if (winnerTeam != null && winnerTeam.isNotEmpty) {
+        _matchService.reportMatchResult(
+          matchId: widget.matchId!,
+          winnerTeamId: winnerTeam,
+          payload: {
+            'duration_seconds': matchSecs,
+            'lines_sent': _engine.linesSent,
+            'max_combo': max(_engine.maxCombo, _maxCombo),
+            'lines_cleared': _engine.linesCleared,
+            'is_surrender': isSurrender,
+            'elo_delta_winner': winnerDelta,
+            'elo_delta_loser': loserDelta,
+          },
+        ).catchError((_) => <String, dynamic>{});
+      }
+    }
+
     if (isWinner) {
       _audioService.play(TetrisSfx.tetris);
       _triggerImpactBanner('¡GANADOR!', sub: '¡HAS GANADO LA PARTIDA! +$_appliedEloDelta PTS ELO', color: const Color(0xFF00D26A));
@@ -1553,8 +1641,13 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
     return KeyEventResult.ignored;
   }
 
+  void _onPresenceChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    PresenceService.instance.statusesNotifier.removeListener(_onPresenceChanged);
     _ticker.dispose();
     _shieldTimer?.cancel();
     _crtDamageFlashTimer?.cancel();
@@ -2118,6 +2211,15 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
                     ),
                   ),
                   const SizedBox(width: 5),
+                  UserStatusDot(
+                    status: _isOpponentReconnecting
+                        ? UserPresenceStatus.away
+                        : (_opponentUserId != null
+                            ? PresenceService.instance.getStatusForUser(_opponentUserId!)
+                            : UserPresenceStatus.online),
+                    size: 6.5,
+                  ),
+                  const SizedBox(width: 4),
                   Flexible(
                     child: Text(
                       '$oppLabel: $_opponentHp',

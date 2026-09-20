@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../game/tetris_types.dart';
 import '../services/gameros_profile_service.dart';
 import '../services/tetris_match_service.dart';
 import '../services/tetris_realtime_service.dart';
+import '../services/presence_service.dart';
 import 'tetris_game_screen.dart';
 
 class QuickPlayScreen extends StatefulWidget {
@@ -20,6 +22,7 @@ class _QuickPlayScreenState extends State<QuickPlayScreen> with SingleTickerProv
   late AnimationController _radarController;
   Timer? _searchTimer;
   Timer? _pollTimer;
+  RealtimeChannel? _matchChannel;
 
   int _searchSeconds = 0;
   String? _currentMatchId;
@@ -37,6 +40,23 @@ class _QuickPlayScreenState extends State<QuickPlayScreen> with SingleTickerProv
     )..repeat();
 
     _iniciarBusqueda();
+  }
+
+  void _suscribirCanalMatch(String matchId) {
+    if (_matchChannel != null) return;
+    try {
+      _matchChannel = _matchService.supabase.channel('match:$matchId');
+      _matchChannel!.onBroadcast(event: 'match_start', callback: (payload) {
+        if (!_isCancelled && mounted) {
+          final t1 = payload['team_1_id'] as String?;
+          final t2 = payload['team_2_id'] as String?;
+          final myT = _myTeamId ?? t1 ?? 'team_1';
+          final oppT = myT == t1 ? t2 : t1;
+          _entrarAPartida(matchId, myT, opponentTeamId: oppT);
+        }
+      });
+      _matchChannel!.subscribe();
+    } catch (_) {}
   }
 
   Future<void> _iniciarBusqueda() async {
@@ -58,14 +78,19 @@ class _QuickPlayScreenState extends State<QuickPlayScreen> with SingleTickerProv
       final status = res['status'] as String?;
       final matchId = res['match_id'] as String?;
       final teamId = res['team_id'] as String?;
+      final oppTeamId = res['opponent_team_id'] as String?;
 
       _currentMatchId = matchId;
       _myTeamId = teamId;
 
+      if (matchId != null && matchId.isNotEmpty) {
+        _suscribirCanalMatch(matchId);
+      }
+
       if (status == 'matched' && matchId != null) {
-        _entrarAPartida(matchId, teamId ?? 'team_1');
+        _entrarAPartida(matchId, teamId ?? 'team_1', opponentTeamId: oppTeamId);
       } else if (status == 'waiting') {
-        _pollTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+        _pollTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
           if (_isCancelled) {
             timer.cancel();
             return;
@@ -73,7 +98,16 @@ class _QuickPlayScreenState extends State<QuickPlayScreen> with SingleTickerProv
           final pollRes = await _matchService.consultarEstadoMatchmaking(_currentMatchId, _myTeamId ?? 'team_1');
           if (pollRes['status'] == 'matched' && pollRes['match_id'] != null) {
             timer.cancel();
-            _entrarAPartida(pollRes['match_id'] as String, pollRes['team_id'] as String? ?? _myTeamId ?? 'team_1');
+            _entrarAPartida(
+              pollRes['match_id'] as String,
+              pollRes['team_id'] as String? ?? _myTeamId ?? 'team_1',
+              opponentTeamId: pollRes['opponent_team_id'] as String?,
+            );
+          } else if (pollRes['status'] == 'waiting' && pollRes['match_id'] != null && _currentMatchId == null) {
+            _currentMatchId = pollRes['match_id'] as String?;
+            if (_currentMatchId != null) {
+              _suscribirCanalMatch(_currentMatchId!);
+            }
           }
         });
       }
@@ -86,19 +120,43 @@ class _QuickPlayScreenState extends State<QuickPlayScreen> with SingleTickerProv
     }
   }
 
-  void _entrarAPartida(String matchId, String teamId) {
+  Future<void> _entrarAPartida(String matchId, String teamId, {String? opponentTeamId}) async {
     _searchTimer?.cancel();
     _pollTimer?.cancel();
     _radarController.stop();
+    try {
+      _matchChannel?.unsubscribe();
+    } catch (_) {}
+
+    _matchService.limpiarMiColaMatchmaking();
 
     final user = _matchService.supabase.auth.currentUser;
     final userId = user?.id ?? 'guest_player';
 
-    final opponentTeamId = teamId == 'team_1' ? 'team_2' : 'team_1';
+    String resolvedOpponentTeam = opponentTeamId ?? '';
+    if (resolvedOpponentTeam.isEmpty || resolvedOpponentTeam == teamId) {
+      try {
+        final matchRow = await _matchService.supabase
+            .schema('tetris')
+            .from('match_tetris')
+            .select('team_1_id, team_2_id')
+            .eq('id', matchId)
+            .maybeSingle();
+        if (matchRow != null) {
+          final t1 = matchRow['team_1_id'] as String?;
+          final t2 = matchRow['team_2_id'] as String?;
+          resolvedOpponentTeam = (teamId == t1 ? t2 : t1) ?? '';
+        }
+      } catch (_) {}
+    }
+    if (resolvedOpponentTeam.isEmpty) {
+      resolvedOpponentTeam = teamId == 'team_1' ? 'team_2' : 'team_1';
+    }
+
     final realtime = TetrisRealtimeService(
       matchId: matchId,
       myTeamId: teamId,
-      opponentTeamId: opponentTeamId,
+      opponentTeamId: resolvedOpponentTeam,
       currentUserId: userId,
     );
 
@@ -109,7 +167,7 @@ class _QuickPlayScreenState extends State<QuickPlayScreen> with SingleTickerProv
             mode: GameMode.duel1v1,
             matchId: matchId,
             myTeamId: teamId,
-            opponentTeamId: opponentTeamId,
+            opponentTeamId: resolvedOpponentTeam,
             realtimeService: realtime,
           ),
         ),
@@ -122,6 +180,9 @@ class _QuickPlayScreenState extends State<QuickPlayScreen> with SingleTickerProv
     _searchTimer?.cancel();
     _pollTimer?.cancel();
     _radarController.stop();
+    try {
+      _matchChannel?.unsubscribe();
+    } catch (_) {}
 
     await _matchService.cancelarBusqueda(_currentMatchId);
 
@@ -136,6 +197,9 @@ class _QuickPlayScreenState extends State<QuickPlayScreen> with SingleTickerProv
     _searchTimer?.cancel();
     _pollTimer?.cancel();
     _radarController.dispose();
+    try {
+      _matchChannel?.unsubscribe();
+    } catch (_) {}
     super.dispose();
   }
 
@@ -213,9 +277,16 @@ class _QuickPlayScreenState extends State<QuickPlayScreen> with SingleTickerProv
                 ),
               ),
               const SizedBox(height: 6),
-              Text(
-                'Jugador: $_gamerTag',
-                style: const TextStyle(color: Color(0xFF818CF8), fontSize: 13, fontWeight: FontWeight.bold),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Jugador: $_gamerTag',
+                    style: const TextStyle(color: Color(0xFF818CF8), fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 6),
+                  const UserStatusDot(status: UserPresenceStatus.online, size: 8),
+                ],
               ),
               const SizedBox(height: 14),
               Container(

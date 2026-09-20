@@ -57,7 +57,7 @@ class TetrisEngine {
     for (int i = 0; i < count; i++) {
       grid.removeAt(0);
       final row = List<Cell?>.generate(cols, (_) => null);
-      final hole = _rng.nextInt(cols);
+      final hole = _combatRng.nextInt(cols);
       for (int x = 0; x < cols; x++) {
         if (x != hole) {
           row[x] = Cell(type: TetrominoType.GARBAGE, cubeType: CubeType.diamond, pieceId: 0);
@@ -73,8 +73,8 @@ class TetrisEngine {
     final startRow = max(0, rows - 16);
     int placed = 0;
     for (int attempt = 0; attempt < 150 && placed < count; attempt++) {
-      final r = startRow + _rng.nextInt(rows - startRow);
-      final c = _rng.nextInt(cols);
+      final r = startRow + _combatRng.nextInt(rows - startRow);
+      final c = _combatRng.nextInt(cols);
       if (grid[r][c] == null) {
         grid[r][c] = Cell(
           type: TetrominoType.GARBAGE,
@@ -145,17 +145,24 @@ class TetrisEngine {
   int defenseEnergy = 0; // 0 a 5
   bool isShieldActive = false;
   int shieldSecondsRemaining = 0;
-  final Random _rng = Random();
+  final int? randomSeed;
+  late Random _bagRng;
+  final Random _combatRng = Random();
 
   TetrisEngine({
     this.cols = 10,
     this.rows = 40, // Matriz 10x40 oficial: 20 superiores Vanish Zone, 20 inferiores visibles
     this.mode = GameMode.solo,
+    this.randomSeed,
   }) {
+    _bagRng = randomSeed != null ? Random(randomSeed!) : Random();
     reset();
   }
 
   void reset() {
+    if (randomSeed != null) {
+      _bagRng = Random(randomSeed!);
+    }
     grid = List.generate(rows, (_) => List.generate(cols, (_) => null));
     _bag = [];
     nextQueue = [];
@@ -206,7 +213,7 @@ class TetrisEngine {
       TetrominoType.I, TetrominoType.J, TetrominoType.L,
       TetrominoType.O, TetrominoType.S, TetrominoType.T, TetrominoType.Z,
     ];
-    bagItems.shuffle(_rng);
+    bagItems.shuffle(_bagRng);
     _bag.addAll(bagItems);
   }
 
@@ -590,7 +597,7 @@ class TetrisEngine {
     for (int i = 0; i < count; i++) {
       grid.removeAt(0);
       final row = List<Cell?>.generate(cols, (_) => null);
-      final hole = _rng.nextInt(cols);
+      final hole = _combatRng.nextInt(cols);
       for (int x = 0; x < cols; x++) {
         if (x != hole) {
           row[x] = Cell(type: TetrominoType.GARBAGE, cubeType: CubeType.none, pieceId: 0);

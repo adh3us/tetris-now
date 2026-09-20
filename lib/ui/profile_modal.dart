@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/gameros_profile_service.dart';
 import '../services/logros_service.dart';
+import '../services/presence_service.dart';
 
 class HybridProfileModal extends StatefulWidget {
   final GamerosUserProfile? initialProfile;
@@ -209,14 +210,24 @@ class _HybridProfileModalState extends State<HybridProfileModal> {
                     : const Icon(Icons.sports_esports_rounded, color: Color(0xFF00E5FF), size: 40),
               ),
               const SizedBox(height: 10),
-              Text(
-                _profile?.displayName ?? 'Jugador',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 18,
-                  letterSpacing: 0.8,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      _profile?.displayName ?? 'Jugador',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                        letterSpacing: 0.8,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const UserStatusDot(status: UserPresenceStatus.online, size: 8),
+                ],
               ),
               if (_profile?.username != null)
                 Text(
@@ -514,13 +525,23 @@ class _HybridProfileModalState extends State<HybridProfileModal> {
                     : const Icon(Icons.person_rounded, color: Color(0xFFFF007F), size: 44),
               ),
               const SizedBox(height: 12),
-              Text(
-                _profile?.displayName ?? 'Usuario Gameros',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 18,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      _profile?.displayName ?? 'Usuario Gameros',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const UserStatusDot(status: UserPresenceStatus.online, size: 8),
+                ],
               ),
               const SizedBox(height: 2),
               Text(
