@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../core/app_version.dart';
 import '../services/gameros_profile_service.dart';
 import '../services/logros_service.dart';
 import '../services/presence_service.dart';
@@ -156,6 +157,19 @@ class _HybridProfileModalState extends State<HybridProfileModal> {
                 fontSize: 14,
                 letterSpacing: 1.2,
               ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            margin: const EdgeInsets.only(right: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: Colors.white24, width: 0.8),
+            ),
+            child: const Text(
+              AppVersion.current,
+              style: TextStyle(color: Colors.white70, fontSize: 9.5, fontWeight: FontWeight.bold),
             ),
           ),
           IconButton(

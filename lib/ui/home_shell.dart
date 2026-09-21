@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:gameros_auth_ui/gameros_auth_ui.dart';
+import '../core/app_version.dart';
 import '../core/supabase_config.dart';
 import '../game/tetris_types.dart';
+import '../services/audio_service.dart';
 import '../services/desafio_service.dart';
 import '../services/gameros_profile_service.dart';
 import '../services/tetris_match_service.dart';
@@ -40,6 +42,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
+    TetrisAudioService().playMusic(TetrisAudioService.bgmLobby);
     if (!widget.isGuest) {
       _desafioPollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _checkIncomingDesafios());
     }
@@ -109,8 +112,11 @@ class _HomeShellState extends State<HomeShell> {
         );
       } finally {
         _mostrandoDesafio = false;
-        if (mounted && !widget.isGuest) {
-          _desafioPollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _checkIncomingDesafios());
+        if (mounted) {
+          TetrisAudioService().playMusic(TetrisAudioService.bgmLobby);
+          if (!widget.isGuest) {
+            _desafioPollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _checkIncomingDesafios());
+          }
         }
       }
     }
@@ -131,6 +137,35 @@ class _HomeShellState extends State<HomeShell> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF070B19),
         elevation: 0,
+        leading: Center(
+          child: Container(
+            margin: const EdgeInsets.only(left: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F172A),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: const Color(0xFF00E5FF).withOpacity(0.35),
+                width: 1.0,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF00E5FF).withOpacity(0.08),
+                  blurRadius: 6,
+                ),
+              ],
+            ),
+            child: const Text(
+              AppVersion.current,
+              style: TextStyle(
+                color: Color(0xFF00E5FF),
+                fontWeight: FontWeight.w900,
+                fontSize: 9.5,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        ),
         title: Text(
           _titles[_currentIndex],
           style: const TextStyle(

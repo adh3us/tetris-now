@@ -504,6 +504,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
     _lastMyHp = _engine.currentHp;
     _lastScore = _engine.score;
     _lastLinesCleared = _engine.linesCleared;
+    _audioService.playMusic(TetrisAudioService.bgmBattle);
 
     _ticker = createTicker((elapsed) {
       if (_lastElapsed == Duration.zero) {
@@ -1290,6 +1291,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
       }
     }
 
+    _audioService.stopMusic();
     if (isWinner) {
       _audioService.play(TetrisSfx.tetris);
       _triggerImpactBanner('¡GANADOR!', sub: '¡HAS GANADO LA PARTIDA! +$_appliedEloDelta PTS ELO', color: const Color(0xFF00D26A));
@@ -1647,6 +1649,7 @@ class _TetrisGameScreenState extends State<TetrisGameScreen> with SingleTickerPr
 
   @override
   void dispose() {
+    _audioService.stopMusic();
     PresenceService.instance.statusesNotifier.removeListener(_onPresenceChanged);
     _ticker.dispose();
     _shieldTimer?.cancel();

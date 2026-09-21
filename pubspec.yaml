@@ -1,7 +1,7 @@
 name: tetris_now
 description: "Tetris Now by gAmeros - Motor de Tetris competitivo 1v1 y sistema ELO para el ecosistema Gameros."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

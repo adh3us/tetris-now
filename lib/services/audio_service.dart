@@ -23,6 +23,15 @@ class TetrisAudioService {
   }
 
   bool isSoundEnabled = true;
+  bool isMusicEnabled = true;
+  double musicVolume = 0.50;
+
+  static const String bgmBattle = 'audio/bgm_battle.mp3';
+  static const String bgmLobby = 'audio/bgm_lobby.mp3';
+
+  // Reproductor dedicado para Música de Fondo (BGM) en bucle
+  AudioPlayer? _bgmPlayer;
+  String? _currentMusicPath;
 
   // Pool de reproductores para baja latencia a 60 FPS
   final List<AudioPlayer> _sfxPool = [];
@@ -49,6 +58,63 @@ class TetrisAudioService {
       final player = AudioPlayer();
       player.setReleaseMode(ReleaseMode.stop);
       _sfxPool.add(player);
+    }
+    _bgmPlayer = AudioPlayer();
+    _bgmPlayer?.setReleaseMode(ReleaseMode.loop);
+  }
+
+  /// Reproduce música de fondo en bucle infinito (.mp3, .ogg o .wav)
+  Future<void> playMusic(String assetRelativePath, {double? volume, bool loop = true}) async {
+    if (!isMusicEnabled) return;
+    _currentMusicPath = assetRelativePath;
+    final vol = volume ?? musicVolume;
+
+    try {
+      _bgmPlayer ??= AudioPlayer();
+      await _bgmPlayer!.setReleaseMode(loop ? ReleaseMode.loop : ReleaseMode.stop);
+      await _bgmPlayer!.setVolume(vol);
+      // assetRelativePath debe ser relativo a assets/ (ej: 'audio/bgm_battle.mp3')
+      await _bgmPlayer!.play(AssetSource(assetRelativePath));
+    } catch (_) {}
+  }
+
+  /// Pausa la música de fondo
+  Future<void> pauseMusic() async {
+    try {
+      await _bgmPlayer?.pause();
+    } catch (_) {}
+  }
+
+  /// Reanuda la música si estaba pausada
+  Future<void> resumeMusic() async {
+    if (!isMusicEnabled) return;
+    try {
+      await _bgmPlayer?.resume();
+    } catch (_) {}
+  }
+
+  /// Detiene la música de fondo
+  Future<void> stopMusic() async {
+    try {
+      await _bgmPlayer?.stop();
+    } catch (_) {}
+  }
+
+  /// Cambia el volumen de la música (0.0 a 1.0)
+  Future<void> setMusicVolume(double volume) async {
+    musicVolume = volume.clamp(0.0, 1.0);
+    try {
+      await _bgmPlayer?.setVolume(musicVolume);
+    } catch (_) {}
+  }
+
+  /// Activa o desactiva la música
+  Future<void> setMusicEnabled(bool enabled) async {
+    isMusicEnabled = enabled;
+    if (!enabled) {
+      await stopMusic();
+    } else if (_currentMusicPath != null) {
+      await playMusic(_currentMusicPath!);
     }
   }
 

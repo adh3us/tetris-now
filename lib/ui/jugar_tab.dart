@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/app_version.dart';
 import '../core/supabase_config.dart';
 import '../game/tetris_types.dart';
 import '../services/gameros_profile_service.dart';
@@ -637,6 +638,17 @@ class _JugarTabState extends State<JugarTab> {
                                   );
                                 }).toList(),
                               ),
+                    const SizedBox(height: 24),
+                    Text(
+                      '${AppVersion.fullDisplay} • gAmeros Core',
+                      style: const TextStyle(
+                        color: Color(0xFF475569),
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                   ],
                 ),
               ),
